@@ -1,0 +1,3 @@
+name=Color Haven
+launch=index.html
+server=server.js

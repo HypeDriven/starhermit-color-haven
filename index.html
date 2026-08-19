@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Color Haven</title>
+<meta name="description" content="Color Haven — a relaxing paint-by-numbers paper-art game.">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23fdf8ef'/><rect x='5' y='5' width='10' height='10' rx='2' fill='%23e0604e'/><rect x='17' y='5' width='10' height='10' rx='2' fill='%235d9fd6'/><rect x='5' y='17' width='10' height='10' rx='2' fill='%235f9e52'/><rect x='17' y='17' width='10' height='10' rx='2' fill='%23e8a33d'/></svg>">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<a class="skip-link" href="#canvas-host">Skip to board</a>
+
+<!-- Compatibility message when WebGL is unavailable -->
+<div id="compat" class="compat" hidden role="alert">
+  <h1>Color Haven</h1>
+  <p>This game needs WebGL, which your browser or device has disabled.
+     Your progress and settings are safe — try a current version of Chrome,
+     Firefox, Safari, or Edge.</p>
+</div>
+
+<div id="app" hidden>
+  <header id="topbar">
+    <div class="brand" aria-label="Color Haven">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">Color Haven</span>
+    </div>
+    <div id="topbar-status" class="topbar-status" aria-live="off"></div>
+    <div class="topbar-actions">
+      <button id="btn-help" class="ghost-btn" type="button">Help</button>
+      <button id="btn-settings" class="ghost-btn" type="button">Settings</button>
+      <button id="btn-pause" class="ghost-btn" type="button" hidden>Pause</button>
+    </div>
+  </header>
+
+  <main id="layout">
+    <aside id="rail-left" aria-label="Objective and progress">
+      <section class="card" id="objective-card">
+        <h2 id="objective-title">Objective</h2>
+        <p id="objective-sub" class="muted"></p>
+        <div class="progress-row">
+          <div class="progress-track" role="progressbar" id="progress-bar"
+               aria-label="Completion" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <span id="progress-pct" class="progress-pct">0%</span>
+        </div>
+        <p id="objective-moves" class="muted"></p>
+      </section>
+      <section class="card" id="stats-card">
+        <h2>Session</h2>
+        <dl class="stat-list">
+          <div><dt>Time</dt><dd id="stat-time">0:00</dd></div>
+          <div><dt>Filled</dt><dd id="stat-filled">0</dd></div>
+          <div><dt>Slips</dt><dd id="stat-invalid">0</dd></div>
+          <div><dt>Hints</dt><dd id="stat-hints">0</dd></div>
+        </dl>
+      </section>
+    </aside>
+
+    <section id="play-area" aria-label="Playfield">
+      <div id="canvas-host" tabindex="0" role="application"
+           aria-label="Illustration board. Use arrow keys to move between regions, Enter to fill, number keys to pick a color."></div>
+      <div id="hud-banner" class="hud-banner" hidden></div>
+      <div id="hud-toast" class="hud-toast" hidden></div>
+    </section>
+
+    <aside id="rail-right" aria-label="Actions and score">
+      <section class="card" id="actions-card">
+        <h2>Actions</h2>
+        <div class="action-grid">
+          <button id="btn-undo" type="button" class="act-btn">Undo <kbd>U</kbd></button>
+          <button id="btn-hint" type="button" class="act-btn">Hint <kbd>H</kbd></button>
+          <button id="btn-camera" type="button" class="act-btn">Re-center <kbd>C</kbd></button>
+          <button id="btn-restart" type="button" class="act-btn">Restart</button>
+        </div>
+      </section>
+      <section class="card" id="score-card">
+        <h2>Score preview</h2>
+        <dl class="stat-list" id="score-preview">
+          <div><dt>Regions</dt><dd data-k="cells">0</dd></div>
+          <div><dt>Accuracy</dt><dd data-k="accuracy">0</dd></div>
+          <div><dt>Hints</dt><dd data-k="hintPenalty">0</dd></div>
+          <div><dt>Total</dt><dd data-k="total">0</dd></div>
+        </dl>
+      </section>
+    </aside>
+  </main>
+
+  <nav id="palette-tray" aria-label="Palette"></nav>
+
+  <!-- ======================= Screens (overlays) ======================= -->
+
+  <div id="screen-title" class="screen" role="dialog" aria-modal="true" aria-labelledby="title-h">
+    <div class="screen-inner title-inner">
+      <h1 id="title-h" class="game-title">Color Haven</h1>
+      <p class="tagline">Fill numbered regions. Finish the paper picture. Breathe.</p>
+      <button id="btn-play" type="button" class="primary-btn big">Play</button>
+      <div class="mode-grid">
+        <button class="mode-btn" data-mode="learn" type="button"><strong>Learn</strong><span>Short guided lessons</span></button>
+        <button class="mode-btn" data-mode="journey" type="button"><strong>Journey</strong><span id="journey-summary">40 stages</span></button>
+        <button class="mode-btn" data-mode="daily" type="button"><strong>Daily</strong><span id="daily-summary">One shared puzzle</span></button>
+        <button class="mode-btn" data-mode="practice" type="button"><strong>Practice</strong><span>Unrated, your pace</span></button>
+        <button class="mode-btn" data-mode="challenge" type="button"><strong>Challenge</strong><span>Limits and targets</span></button>
+        <button class="mode-btn" data-mode="score" type="button"><strong>Score chase</strong><span>Seeded leaderboards</span></button>
+      </div>
+      <p id="profile-line" class="muted small"></p>
+      <p id="achievement-line" class="muted small"></p>
+    </div>
+  </div>
+
+  <div id="screen-setup" class="screen" role="dialog" aria-modal="true" aria-labelledby="setup-h" hidden>
+    <div class="screen-inner">
+      <h1 id="setup-h">Mode setup</h1>
+      <div id="setup-body"></div>
+      <div class="row gap">
+        <button id="btn-setup-start" type="button" class="primary-btn">Start</button>
+        <button id="btn-setup-back" type="button" class="ghost-btn">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-journey" class="screen" role="dialog" aria-modal="true" aria-labelledby="journey-h" hidden>
+    <div class="screen-inner wide">
+      <h1 id="journey-h">Journey</h1>
+      <p class="muted">One new idea at a time. Every 8th stage is a mastery test.</p>
+      <div id="journey-grid" class="journey-grid"></div>
+      <div class="row gap"><button id="btn-journey-back" type="button" class="ghost-btn">Back</button></div>
+    </div>
+  </div>
+
+  <div id="screen-results" class="screen" role="dialog" aria-modal="true" aria-labelledby="results-h" hidden>
+    <div class="screen-inner">
+      <h1 id="results-h">Complete</h1>
+      <p id="results-sub" class="muted"></p>
+      <table class="score-table" id="results-table">
+        <caption class="visually-hidden">Score breakdown</caption>
+        <tbody></tbody>
+      </table>
+      <div id="results-achievements" class="ach-list"></div>
+      <div id="results-compare" class="muted"></div>
+      <div class="row gap wrap">
+        <button id="btn-results-next" type="button" class="primary-btn">Next</button>
+        <button id="btn-results-replay" type="button" class="ghost-btn">Replay</button>
+        <button id="btn-results-home" type="button" class="ghost-btn">Home</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-pause" class="screen" role="dialog" aria-modal="true" aria-labelledby="pause-h" hidden>
+    <div class="screen-inner">
+      <h1 id="pause-h">Paused</h1>
+      <div class="col gap">
+        <button id="btn-resume" type="button" class="primary-btn">Resume</button>
+        <button id="btn-pause-settings" type="button" class="ghost-btn">Settings</button>
+        <button id="btn-pause-help" type="button" class="ghost-btn">Help</button>
+        <button id="btn-pause-leave" type="button" class="danger-btn">Leave round</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-settings" class="screen" role="dialog" aria-modal="true" aria-labelledby="settings-h" hidden>
+    <div class="screen-inner wide">
+      <h1 id="settings-h">Settings</h1>
+      <div class="settings-grid">
+        <fieldset>
+          <legend>Audio</legend>
+          <label>Music <input type="range" id="vol-music" min="0" max="100" step="1"></label>
+          <label>Effects <input type="range" id="vol-effects" min="0" max="100" step="1"></label>
+          <label>Ambience <input type="range" id="vol-ambience" min="0" max="100" step="1"></label>
+          <label>Voice <input type="range" id="vol-voice" min="0" max="100" step="1"></label>
+          <label class="check"><input type="checkbox" id="set-captions"> Text cues for sounds</label>
+        </fieldset>
+        <fieldset>
+          <legend>Graphics</legend>
+          <label>Quality
+            <select id="set-quality">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="set-motion"> Reduce motion</label>
+          <label class="check"><input type="checkbox" id="set-contrast"> High contrast</label>
+        </fieldset>
+        <fieldset>
+          <legend>Accessibility</legend>
+          <label class="check"><input type="checkbox" id="set-cvd"> Color-vision-safe palette</label>
+          <label class="check"><input type="checkbox" id="set-largetext"> Larger text</label>
+          <label class="check"><input type="checkbox" id="set-lefthand"> Left-handed tray</label>
+          <label class="check"><input type="checkbox" id="set-haptics"> Haptics (vibration)</label>
+          <button id="btn-replay-tutorial" type="button" class="ghost-btn">Replay tutorial</button>
+        </fieldset>
+      </div>
+      <div class="row gap"><button id="btn-settings-close" type="button" class="primary-btn">Done</button></div>
+    </div>
+  </div>
+
+  <div id="screen-help" class="screen" role="dialog" aria-modal="true" aria-labelledby="help-h" hidden>
+    <div class="screen-inner wide">
+      <h1 id="help-h">How to play</h1>
+      <div id="help-cards" class="help-cards"></div>
+      <div class="row gap"><button id="btn-help-close" type="button" class="primary-btn">Close</button></div>
+    </div>
+  </div>
+
+  <div id="screen-scores" class="screen" role="dialog" aria-modal="true" aria-labelledby="scores-h" hidden>
+    <div class="screen-inner">
+      <h1 id="scores-h">Leaderboard</h1>
+      <p id="scores-sub" class="muted"></p>
+      <table class="score-table" id="scores-table">
+        <caption class="visually-hidden">Leaderboard entries</caption>
+        <thead><tr><th>#</th><th>Player</th><th>Score</th><th>Time</th><th>Slips</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row gap"><button id="btn-scores-close" type="button" class="primary-btn">Close</button></div>
+    </div>
+  </div>
+
+  <div id="aria-live" class="visually-hidden" aria-live="polite"></div>
+  <div id="aria-alert" class="visually-hidden" aria-live="assertive"></div>
+</div>
+
+<noscript>
+  <p style="padding:2rem;font-family:sans-serif">Color Haven needs JavaScript to run.</p>
+</noscript>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
