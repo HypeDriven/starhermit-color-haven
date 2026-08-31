@@ -1,0 +1,74 @@
+[
+  {
+    "name": "ui-tick",
+    "seconds": 1,
+    "prompt": "A single soft wooden UI tick, like a fingertip tapping a small lacquered wooden button, very short and quiet.",
+    "event": "uiTick"
+  },
+  {
+    "name": "palette-select",
+    "seconds": 1,
+    "prompt": "A gentle dab of a brush picking up paint from a palette well, soft plastic click with a light wet paint dab, short.",
+    "event": "select"
+  },
+  {
+    "name": "paint-fill-1",
+    "seconds": 1,
+    "prompt": "A short soft brush stroke spreading wet paint across textured watercolor paper, one smooth swipe.",
+    "event": "fill"
+  },
+  {
+    "name": "paint-fill-2",
+    "seconds": 1,
+    "prompt": "A quick spongy dab of acrylic paint pressed onto paper, soft wet press and release.",
+    "event": "fill"
+  },
+  {
+    "name": "paint-fill-3",
+    "seconds": 1,
+    "prompt": "Soft bristles dragging thick pigment in one short stroke over coarse paper, gentle scrape.",
+    "event": "fill"
+  },
+  {
+    "name": "paint-fill-4",
+    "seconds": 1,
+    "prompt": "A light roller of paint gliding briefly over paper with a soft creamy wet sound.",
+    "event": "fill"
+  },
+  {
+    "name": "paper-undo",
+    "seconds": 1,
+    "prompt": "A piece of paper being gently peeled back from a stack, soft papery rustle, brief lifting undo sound.",
+    "event": "undo"
+  },
+  {
+    "name": "hint-chime",
+    "seconds": 1,
+    "prompt": "A single soft glass chime note with a gentle shimmer, friendly and quiet, suggesting a hint.",
+    "event": "hint"
+  },
+  {
+    "name": "invalid-thud",
+    "seconds": 1,
+    "prompt": "A dull soft double knock on cardboard, muted and low, a gentle not-allowed thud.",
+    "event": "invalid"
+  },
+  {
+    "name": "level-complete",
+    "seconds": 3,
+    "prompt": "A warm rising four-note marimba flourish with a soft paper rustle, a small gentle celebration finish.",
+    "event": "complete"
+  },
+  {
+    "name": "moves-exhausted",
+    "seconds": 2,
+    "prompt": "A soft descending two-note wooden tone, like a small calm sigh, low and ending quietly.",
+    "event": "movesExhausted"
+  },
+  {
+    "name": "achievement-chime",
+    "seconds": 2,
+    "prompt": "Two bright sparkling bell notes in quick succession with a light shimmer tail, a small reward jingle.",
+    "event": "achievement"
+  }
+]

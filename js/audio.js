@@ -1,9 +1,15 @@
 /**
  * Color Haven — audio module.
- * All sound is synthesized with WebAudio (original short transients, no assets).
+ * Event one-shots prefer authored samples in sfx/ (see sfx/manifest.json),
+ * lazily fetched and decoded after the user-gesture unlock; the original
+ * WebAudio synthesis below remains as the loading/failure fallback.
  * Buses: music / effects / ambience / voice, independent gains.
  * Focus/background policy: everything ducks when the tab is hidden.
  */
+
+const PAINT_FILL_SAMPLES = Object.freeze([
+  'paint-fill-1', 'paint-fill-2', 'paint-fill-3', 'paint-fill-4',
+]);
 
 export class AudioEngine {
   constructor() {
@@ -15,6 +21,7 @@ export class AudioEngine {
     this._musicIntensity = 0;
     this._ambNodes = null;
     this._captionsCb = null; // accessibility: text cues for meaningful audio
+    this._sfx = new Map();   // name -> { status: 'loading'|'ready'|'failed', buffer }
   }
 
   /** Must be called from a user gesture. Idempotent. */
@@ -88,35 +95,87 @@ export class AudioEngine {
     src.start(t);
   }
 
+  /* ------------------------- sample SFX ------------------------- */
+  /* Authored one-shots (sfx/<name>.opus) mapped to the events below.
+     Clips are fetched and decoded lazily on first use, after unlock(). */
+
+  _sfxRecord(name) {
+    let rec = this._sfx.get(name);
+    if (rec) return rec;
+    rec = { status: 'loading', buffer: null };
+    this._sfx.set(name, rec);
+    fetch(`sfx/${name}.opus`)
+      .then((r) => { if (!r.ok) throw new Error(`http ${r.status}`); return r.arrayBuffer(); })
+      .then((ab) => this.ctx.decodeAudioData(ab))
+      .then((buf) => { rec.buffer = buf; rec.status = 'ready'; })
+      .catch(() => { rec.status = 'failed'; });
+    return rec;
+  }
+
+  /**
+   * Play the authored clip for an event through the effects bus.
+   * Returns true when a decoded sample actually started; false means the
+   * caller should run its synthesized fallback (still loading or failed).
+   */
+  _trySample(name) {
+    if (!this.ctx || !this.enabled) return false;
+    const rec = this._sfxRecord(name);
+    if (rec.status !== 'ready') return false;
+    const src = this.ctx.createBufferSource();
+    src.buffer = rec.buffer;
+    src.connect(this.buses.effects);
+    src.start();
+    return true;
+  }
+
   /* ------------------------- event mapping ------------------------- */
   /* Event hierarchy: acknowledgment < legal move < goal < completion. */
 
-  uiTick() { this._blip({ freq: 660, dur: 0.04, gain: 0.08 }); }
-  select() { this._blip({ freq: 520, dur: 0.06, type: 'triangle', gain: 0.15 }); }
+  uiTick() {
+    if (this._trySample('ui-tick')) return;
+    this._blip({ freq: 660, dur: 0.04, gain: 0.08 });
+  }
+  select() {
+    if (this._trySample('palette-select')) return;
+    this._blip({ freq: 520, dur: 0.06, type: 'triangle', gain: 0.15 });
+  }
   fill() {
+    this._caption('region filled');
+    const sample = PAINT_FILL_SAMPLES[Math.floor(Math.random() * PAINT_FILL_SAMPLES.length)];
+    if (this._trySample(sample)) return;
     this._blip({ freq: 300, dur: 0.09, type: 'triangle', gain: 0.22, slide: 140 });
     this._noise({ dur: 0.07, gain: 0.12, lowpass: 3200 }); // pigment drag
-    this._caption('region filled');
   }
-  undo() { this._blip({ freq: 420, dur: 0.07, type: 'triangle', gain: 0.14, slide: -120 }); }
-  hint() { this._blip({ freq: 740, dur: 0.12, type: 'sine', gain: 0.14, slide: 180 }); this._caption('hint used'); }
+  undo() {
+    if (this._trySample('paper-undo')) return;
+    this._blip({ freq: 420, dur: 0.07, type: 'triangle', gain: 0.14, slide: -120 });
+  }
+  hint() {
+    this._caption('hint used');
+    if (this._trySample('hint-chime')) return;
+    this._blip({ freq: 740, dur: 0.12, type: 'sine', gain: 0.14, slide: 180 });
+  }
   invalid() {
-    this._blip({ freq: 160, dur: 0.12, type: 'square', gain: 0.10 });
     this._caption('that region needs a different number');
+    if (this._trySample('invalid-thud')) return;
+    this._blip({ freq: 160, dur: 0.12, type: 'square', gain: 0.10 });
   }
   complete() {
+    this._caption('illustration complete');
+    if (this._trySample('level-complete')) return;
     if (!this.ctx || !this.enabled) return;
     const notes = [392, 494, 587, 784]; // G major lift
     notes.forEach((f, i) => setTimeout(() => this._blip({ freq: f, dur: 0.35, type: 'triangle', gain: 0.18 }), i * 90));
-    this._caption('illustration complete');
   }
   movesExhausted() {
-    this._blip({ freq: 220, dur: 0.3, type: 'sine', gain: 0.14, slide: -80 });
     this._caption('out of moves');
+    if (this._trySample('moves-exhausted')) return;
+    this._blip({ freq: 220, dur: 0.3, type: 'sine', gain: 0.14, slide: -80 });
   }
   achievement() {
-    [880, 1108].forEach((f, i) => setTimeout(() => this._blip({ freq: f, dur: 0.2, gain: 0.14 }), i * 110));
     this._caption('achievement unlocked');
+    if (this._trySample('achievement-chime')) return;
+    [880, 1108].forEach((f, i) => setTimeout(() => this._blip({ freq: f, dur: 0.2, gain: 0.14 }), i * 110));
   }
 
   /* ------------------------- ambience + music ------------------------- */
