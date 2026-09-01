@@ -30,7 +30,10 @@ export class Platform {
       const rtt = performance.now() - t0;
       if (!res.ok) throw new Error('time ' + res.status);
       const data = await res.json();
-      this.timeOffsetMs = data.now + rtt / 2 - Date.now();
+      // Hosts expose the epoch under different keys (`now`, `serverTime`, `epochMs`).
+      const serverMs = Number(data.now ?? data.serverTime ?? data.epochMs);
+      if (!Number.isFinite(serverMs)) throw new Error('time shape');
+      this.timeOffsetMs = serverMs + rtt / 2 - Date.now();
       this.online = true;
     } catch {
       this.online = false;
@@ -155,6 +158,10 @@ export class Platform {
   /* ------------------------- fetch helper ------------------------- */
 
   async _fetch(url, opts = {}) {
+    // Some hosts do not implement the optional activity/presence/telemetry
+    // routes; after the first 404 we stop calling that route (best-effort
+    // endpoints must not spam failing requests).
+    if (this._unsupported && this._unsupported.has(url)) throw new Error('unsupported-endpoint');
     const headers = { 'content-type': 'application/json' };
     if (this.launchToken) headers['x-launch-token'] = this.launchToken;
     const res = await fetch(url, { ...opts, headers });
@@ -163,6 +170,10 @@ export class Platform {
       this.online = false;
       setTimeout(() => { this.syncTime(); }, 5000);
       throw new Error('rate-limited');
+    }
+    if (res.status === 404 && ['/api/v1/activity', '/api/v1/presence', '/api/v1/telemetry'].includes(url)) {
+      (this._unsupported || (this._unsupported = new Set())).add(url);
+      throw new Error('unsupported-endpoint');
     }
     return res;
   }
