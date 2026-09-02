@@ -127,15 +127,19 @@ export class Platform {
 
   async _activity(kind, mode) {
     if (!this.online) return;
-    try { await this._fetch('/api/v1/activity', { method: 'POST', body: JSON.stringify({ kind, mode }) }); }
-    catch { /* best effort */ }
+    try {
+      const res = await this._fetch('/api/v1/activity', { method: 'POST', body: JSON.stringify({ kind, mode }) });
+      await res.text(); // drain: an unread response body gets aborted on GC
+    } catch { /* best effort */ }
   }
 
   _heartbeat(on) {
     if (this._hbTimer) { clearInterval(this._hbTimer); this._hbTimer = null; }
     if (!on || !this.online) return;
     this._hbTimer = setInterval(() => {
-      this._fetch('/api/v1/presence', { method: 'POST', body: '{}' }).catch(() => {});
+      this._fetch('/api/v1/presence', { method: 'POST', body: '{}' })
+        .then((res) => res.text()) // drain: an unread response body gets aborted on GC
+        .catch(() => {});
     }, 30000);
   }
 
@@ -151,7 +155,8 @@ export class Platform {
       this._fetch('/api/v1/telemetry', {
         method: 'POST',
         body: JSON.stringify({ event, props, at: this.now() }),
-      }).catch(() => {});
+      }).then((res) => res.text()) // drain: an unread response body gets aborted on GC
+        .catch(() => {});
     }
   }
 
