@@ -1,6 +1,6 @@
 /**
  * Color Haven — rules/content test suite (Node, no deps).
- * Run: node test/rules.test.mjs
+ * Run: node tests/rules.test.mjs
  */
 import {
   createGame, applyCommand, listLegalActions, serialize, deserialize,

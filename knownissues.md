@@ -7,9 +7,9 @@ alongside the game's own unit tests and server smoke suite.
 
 | Check | Result |
 | --- | --- |
-| `npm test` (`test/rules.test.mjs`) | 1409/1409 pass, 0 fail |
-| `node --check` on all modules | clean (`js/*.js`, `server.js`, `test/*.mjs`) |
-| `test/server.smoke.mjs` (against `node server.js 39307`) | PASS — 10/10, 0 fail |
+| `npm test` (`tests/rules.test.mjs`) | 1409/1409 pass, 0 fail |
+| `node --check` on all modules | clean (`js/*.js`, `server.js`, `tests/*.mjs`) |
+| `tests/server.smoke.mjs` (against `node server.js 39307`) | PASS — 10/10, 0 fail |
 | `tests/e2e.mjs` (headless Chrome) | not present; the shipped smoke is HTTP-level only |
 | HTTP fuzz of `server.js` (directories, traversal, malformed encodings, 20 malformed bodies on all 5 API routes) | survived; no crash, no traversal |
 
@@ -163,7 +163,7 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
 - `server.js:157-165` — `GET` strips `envelope` from every entry before returning a board, so replay logs
   are never echoed back to other players.
 - `server.js:216-228` — static path handling: decode, `normalize`, strip leading `../` and `/`, re-check
-  the resolved path against `ROOT`, then explicitly refuse dotfiles, `server.js`, `data/`, `test/` and the
+  the resolved path against `ROOT`, then explicitly refuse dotfiles, `server.js`, `data/`, `tests/` and the
   package manifests. Directory requests surface as a caught 500 rather than a crash.
 - `server.js:106-118` (`readBody`) — 512 KB cap with `req.destroy()`; `server.js:51-58` — per-IP token
   bucket applied to both save and score submission.
@@ -175,7 +175,7 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
 
 ## Not tested
 
-- The browser UI: this game ships no headless-browser test, and the shipped `test/server.smoke.mjs` is
+- The browser UI: this game ships no headless-browser test, and the shipped `tests/server.smoke.mjs` is
   HTTP-level only. Rendering, input, accessibility and responsive layout were not exercised.
 - Audio output (`js/audio.js`).
 - Hosted/StarHermit integration in `js/platform.js` beyond reading the code (`saveDoc`/`loadDoc` have no
@@ -186,5 +186,5 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
 Starting `server.js` created an untracked `data/` directory (`boards.json`, `saves.json`) inside this
 game folder. It is runtime state, not a source change; it is being cleaned up centrally. The three
 leaderboard/save exploits above were run against **copies** of the game in a scratch directory, so no
-forged entry was written to this folder's boards — only the shipped `test/server.smoke.mjs` submission is
+forged entry was written to this folder's boards — only the shipped `tests/server.smoke.mjs` submission is
 present here.

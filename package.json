@@ -5,7 +5,7 @@
   "private": true,
   "description": "Color Haven — a relaxing paint-by-numbers paper-art game.",
   "scripts": {
-    "test": "node test/rules.test.mjs",
+    "test": "node tests/rules.test.mjs",
     "start": "node server.js 8080"
   }
 }

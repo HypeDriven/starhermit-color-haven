@@ -223,7 +223,7 @@ export function createColorHavenServer() {
       // Never serve hidden files, the server script, tests, or data.
       if (rel.includes('/.') || rel.startsWith('.') || rel === 'server.js' ||
           rel.startsWith('data/') || rel.startsWith('data\\') ||
-          rel.startsWith('test/') || rel.startsWith('test\\') ||
+          rel.startsWith('tests/') || rel.startsWith('tests\\') ||
           rel === 'package.json' || rel === 'package-lock.json') {
         return json(res, 404, { error: 'not found' });
       }

@@ -16,7 +16,7 @@ Zero dependencies; Three.js is vendored in `vendor/`.
 ```
 npm test                                   # rules engine unit tests
 node server.js 8091 &                      # then, against the running server:
-BASE=http://localhost:8091 node test/server.smoke.mjs
+BASE=http://localhost:8091 node tests/server.smoke.mjs
 ```
 
 The server writes runtime state (saves, leaderboards) to `data/`, which is
