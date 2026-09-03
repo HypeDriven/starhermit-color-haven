@@ -1,6 +1,9 @@
 /**
  * Color Haven — platform module (StarHermit host adapter).
- * Same-origin /api routes when hosted; transparent local fallback offline.
+ * The host guarantees exactly one API route: GET /api/v1/time. It is probed
+ * once at startup; every other hosted feature (save, boards, activity,
+ * presence, telemetry) is a local no-op by design, because those routes are
+ * not guaranteed to exist and calling them would surface console errors.
  * Launch/account tokens are kept in memory only — never persisted.
  */
 
@@ -14,7 +17,6 @@ export class Platform {
     this.online = false;          // host API reachable
     this.timeOffsetMs = 0;        // serverTime - clientTime
     this.consented = false;       // telemetry consent
-    this._hbTimer = null;
   }
 
   async init() {
@@ -45,30 +47,14 @@ export class Platform {
   now() { return Date.now() + this.timeOffsetMs; }
 
   /* ------------------------- persistence ------------------------- */
-  /* Cloud when hosted (versioned, checksummed doc); localStorage otherwise. */
+  /* localStorage only — the host does not guarantee a save route. */
 
   async saveDoc(key, doc) {
-    const body = JSON.stringify({ key, doc });
-    if (this.online) {
-      try {
-        const res = await this._fetch('/api/v1/save', { method: 'POST', body });
-        if (res.ok) return true;
-      } catch { /* fall through to local */ }
-    }
     try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(doc)); } catch { /* quota */ }
     return true;
   }
 
   async loadDoc(key) {
-    if (this.online) {
-      try {
-        const res = await this._fetch('/api/v1/save?key=' + encodeURIComponent(key));
-        if (res.ok) {
-          const data = await res.json();
-          if (data.doc) return data.doc;
-        }
-      } catch { /* fall through */ }
-    }
     try {
       const raw = localStorage.getItem(LS_PREFIX + key);
       return raw ? JSON.parse(raw) : null;
@@ -76,19 +62,9 @@ export class Platform {
   }
 
   /* ------------------------- leaderboards ------------------------- */
+  /* Local board only — the host does not guarantee a leaderboard route. */
 
   async submitScore(board, entry) {
-    if (this.online) {
-      try {
-        const res = await this._fetch('/api/v1/leaderboard/' + encodeURIComponent(board), {
-          method: 'POST', body: JSON.stringify(entry),
-        });
-        if (res.ok) return await res.json();
-        const err = await res.json().catch(() => ({}));
-        return { ok: false, error: err.error || 'submit failed' };
-      } catch { /* fall through */ }
-    }
-    // Local board fallback.
     const list = await this.fetchBoard(board);
     list.push(entry);
     list.sort((a, b) => b.score - a.score || a.elapsedMs - b.elapsedMs);
@@ -99,87 +75,26 @@ export class Platform {
   }
 
   async fetchBoard(board) {
-    if (this.online) {
-      try {
-        const res = await this._fetch('/api/v1/leaderboard/' + encodeURIComponent(board));
-        if (res.ok) {
-          const data = await res.json();
-          return data.entries || [];
-        }
-      } catch { /* fall through */ }
-    }
     try {
       return JSON.parse(localStorage.getItem(LS_PREFIX + 'board.' + board) || '[]');
     } catch { return []; }
   }
 
   /* ------------------------- activity + presence ------------------------- */
+  /* No-ops — the host does not guarantee activity/presence routes. */
 
-  activityStart(mode) {
-    this._activity('start', mode);
-    this._heartbeat(true);
-  }
-
-  activityEnd(mode) {
-    this._activity('end', mode);
-    this._heartbeat(false);
-  }
-
-  async _activity(kind, mode) {
-    if (!this.online) return;
-    try {
-      const res = await this._fetch('/api/v1/activity', { method: 'POST', body: JSON.stringify({ kind, mode }) });
-      await res.text(); // drain: an unread response body gets aborted on GC
-    } catch { /* best effort */ }
-  }
-
-  _heartbeat(on) {
-    if (this._hbTimer) { clearInterval(this._hbTimer); this._hbTimer = null; }
-    if (!on || !this.online) return;
-    this._hbTimer = setInterval(() => {
-      this._fetch('/api/v1/presence', { method: 'POST', body: '{}' })
-        .then((res) => res.text()) // drain: an unread response body gets aborted on GC
-        .catch(() => {});
-    }, 30000);
-  }
+  activityStart(mode) { /* no hosted route to notify */ }
+  activityEnd(mode) { /* no hosted route to notify */ }
 
   /* ------------------------- telemetry (consent-gated, aggregate) ------------------------- */
 
   setConsent(on) { this.consented = !!on; }
 
   track(event, props = {}) {
+    // Whitelist retained for the day a guaranteed route exists; until then
+    // telemetry is intentionally not transmitted.
     if (!this.consented) return;
     const allowed = ['start', 'tutorial_step', 'round_end', 'retry', 'settings_change', 'error'];
     if (!allowed.includes(event)) return;
-    if (this.online) {
-      this._fetch('/api/v1/telemetry', {
-        method: 'POST',
-        body: JSON.stringify({ event, props, at: this.now() }),
-      }).then((res) => res.text()) // drain: an unread response body gets aborted on GC
-        .catch(() => {});
-    }
-  }
-
-  /* ------------------------- fetch helper ------------------------- */
-
-  async _fetch(url, opts = {}) {
-    // Some hosts do not implement the optional activity/presence/telemetry
-    // routes; after the first 404 we stop calling that route (best-effort
-    // endpoints must not spam failing requests).
-    if (this._unsupported && this._unsupported.has(url)) throw new Error('unsupported-endpoint');
-    const headers = { 'content-type': 'application/json' };
-    if (this.launchToken) headers['x-launch-token'] = this.launchToken;
-    const res = await fetch(url, { ...opts, headers });
-    if (res.status === 429) {
-      // Structured rate-limit: recoverable; surface as offline for this call.
-      this.online = false;
-      setTimeout(() => { this.syncTime(); }, 5000);
-      throw new Error('rate-limited');
-    }
-    if (res.status === 404 && ['/api/v1/activity', '/api/v1/presence', '/api/v1/telemetry'].includes(url)) {
-      (this._unsupported || (this._unsupported = new Set())).add(url);
-      throw new Error('unsupported-endpoint');
-    }
-    return res;
   }
 }
