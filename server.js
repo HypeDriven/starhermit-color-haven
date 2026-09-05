@@ -13,7 +13,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, normalize, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { generateLevel, CONTENT_VERSION } from './js/content.js';
+import { generateLevel, dailyLevel, CONTENT_VERSION } from './js/content.js';
 import { replay, score as scoreOf, RULES_VERSION } from './js/rules.js';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
@@ -58,6 +58,14 @@ function rateLimited(ip, cost = 1, perMinute = 120) {
   return b.count > perMinute;
 }
 
+/* Scope a save key to the requesting identity. There is no account/token layer
+ * in this offline build, so the peer address is the only available identity:
+ * keying the store on it means one client can no longer read or overwrite
+ * another's document by naming its key. */
+function scopedSaveKey(ip, key) {
+  return 'ip:' + String(ip).replace(/[^A-Za-z0-9.:]/g, '_') + '|' + key;
+}
+
 /* ------------------------------------------------------------------ */
 /* replay validation                                                   */
 /* ------------------------------------------------------------------ */
@@ -65,15 +73,17 @@ function rateLimited(ip, cost = 1, perMinute = 120) {
 /**
  * Validate a score entry by replaying its envelope against a regenerated
  * level. Returns { valid, reason?, casual }.
+ *
+ * @param board  the leaderboard id from the URL (e.g. "daily-2026-08-20"),
+ *               used to bind daily submissions to the server-published board.
  */
-function validateEntry(entry) {
+function validateEntry(entry, board) {
   const env = entry && entry.envelope;
   if (!env) {
-    // No replay log: plausibility-only (casual board).
-    if (!Number.isFinite(entry.score) || entry.score < 0 || entry.score > 20000) {
-      return { valid: false, reason: 'implausible score' };
-    }
-    return { valid: true, casual: true };
+    // No replay log. The authoritative server always validates via replay, so an
+    // unverifiable claim is rejected outright rather than outranking validated
+    // runs on a competitive board.
+    return { valid: false, reason: 'missing replay log' };
   }
   try {
     if (env.schemaV !== 1) return { valid: false, reason: 'unknown envelope schema' };
@@ -81,10 +91,24 @@ function validateEntry(entry) {
     if (env.seed !== entry.seed || env.levelId !== entry.levelId) {
       return { valid: false, reason: 'envelope/entry mismatch' };
     }
-    const level = generateLevel({
-      id: env.levelId, seed: env.seed, tier: env.tier, mechanics: env.mechanics,
-    });
-    const { state } = replay(level, { mode: env.mode, mechanics: env.mechanics }, env.commands || []);
+    // Daily boards are published by the server: ignore any client-supplied
+    // tier/mechanics and validate against the actual board for that date.
+    const dailyMatch = board && /^daily-(\d{4}-\d{2}-\d{2})$/.exec(board);
+    let level;
+    let opts;
+    if (dailyMatch) {
+      level = dailyLevel(dailyMatch[1]);
+      if (env.levelId !== level.id || env.seed !== level.seed) {
+        return { valid: false, reason: 'not the published daily board' };
+      }
+      opts = { mode: env.mode }; // server-authoritative mechanics, not the client's
+    } else {
+      level = generateLevel({
+        id: env.levelId, seed: env.seed, tier: env.tier, mechanics: env.mechanics,
+      });
+      opts = { mode: env.mode, mechanics: env.mechanics };
+    }
+    const { state } = replay(level, opts, env.commands || []);
     const sc = scoreOf(state, level);
     if (sc.total !== entry.score) return { valid: false, reason: 'score mismatch' };
     if (state.terminalReason !== 'completed') return { valid: false, reason: 'not completed' };
@@ -134,7 +158,7 @@ export function createColorHavenServer() {
         const key = url.searchParams.get('key') || '';
         if (key.length > 80) return json(res, 400, { error: 'bad key' });
         const saves = await readJson(SAVES_FILE, {});
-        return json(res, 200, { doc: saves[key] || null });
+        return json(res, 200, { doc: saves[scopedSaveKey(ip, key)] || null });
       }
 
       if (path === '/api/v1/save' && req.method === 'POST') {
@@ -144,12 +168,13 @@ export function createColorHavenServer() {
           return json(res, 400, { error: 'bad save' });
         }
         const saves = await readJson(SAVES_FILE, {});
-        const prev = saves[body.key];
+        const key = scopedSaveKey(ip, body.key);
+        const prev = saves[key];
         // Versioned, checksummed doc: keep both when neither descends.
         if (prev && prev.v != null && body.doc.v != null && body.doc.v < prev.v) {
-          saves[body.key + '.conflict.' + Date.now()] = body.doc;
+          saves[key + '.conflict.' + Date.now()] = body.doc;
         } else {
-          saves[body.key] = body.doc;
+          saves[key] = body.doc;
         }
         await writeJson(SAVES_FILE, saves);
         return json(res, 200, { ok: true });
@@ -180,7 +205,7 @@ export function createColorHavenServer() {
         entry.name = String(entry.name || 'Guest').slice(0, 24);
         entry.at = Date.now();
 
-        const verdict = validateEntry(entry);
+        const verdict = validateEntry(entry, board);
         if (!verdict.valid) return json(res, 422, { error: 'score rejected: ' + verdict.reason });
         entry.casual = !!verdict.casual;
 

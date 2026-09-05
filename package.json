@@ -6,6 +6,10 @@
   "description": "Color Haven — a relaxing paint-by-numbers paper-art game.",
   "scripts": {
     "test": "node tests/rules.test.mjs",
+    "test:e2e": "node tests/e2e.mjs",
     "start": "node server.js 8080"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
   }
 }

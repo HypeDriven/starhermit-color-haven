@@ -260,5 +260,36 @@ function solveAll(st, lv) {
   ok(compareResults(mk(100, 1, 3000, 'a'), mk(100, 1, 3000, 'b')) < 0, 'stable id final tie-break');
 }
 
+/* ---------- payload type guards (select/fill) ---------- */
+{
+  const lv = generateLevel({ id: 'guard', seed: 'guard/1', tier: 1 });
+  let st = createGame(lv, { mode: 'practice' });
+  // select must reject non-integer / string colours
+  let r = applyCommand(st, lv, cmd('select', { color: 1.5 }));
+  ok(!r.ok && r.error === ERR.BAD_COLOR, 'select rejects fractional color');
+  ok(st.selected == null && st.tick === 0, 'select fractional accepts nothing');
+  r = applyCommand(st, lv, cmd('select', { color: '1' }));
+  ok(!r.ok && r.error === ERR.BAD_COLOR, 'select rejects string color');
+  // a valid select still works and lets a correct fill proceed
+  st = applyCommand(st, lv, cmd('select', { color: 0 })).state;
+  ok(st.selected === 0, 'select integer accepted');
+  // fill must reject non-integer / string / NaN cells (and not burn invalid/moves)
+  for (const bad of [2.5, NaN, '0']) {
+    const before = { invalid: st.invalid, moves: st.moves, remainingMoves: st.remainingMoves };
+    r = applyCommand(st, lv, cmd('fill', { cell: bad }));
+    ok(!r.ok && r.error === ERR.OUT_OF_BOUNDS, `fill rejects ${String(bad)} cell`);
+    ok(r.state.invalid === before.invalid && r.state.moves === before.moves, `fill ${String(bad)} not scored`);
+  }
+}
+
+/* ---------- hashState distinguishes scalar types ---------- */
+{
+  const base = createGame(level, { mode: 'practice' });
+  ok(hashState({ ...base, selected: 1.5 }) !== hashState({ ...base, selected: '1.5' }),
+    'hashState distinguishes numeric from string scalar');
+  ok(hashState({ ...base, remainingMoves: 7 }) !== hashState({ ...base, remainingMoves: '7' }),
+    'hashState distinguishes numeric from string remainingMoves');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

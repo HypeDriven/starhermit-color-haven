@@ -7,15 +7,16 @@ alongside the game's own unit tests and server smoke suite.
 
 | Check | Result |
 | --- | --- |
-| `npm test` (`tests/rules.test.mjs`) | 1409/1409 pass, 0 fail |
+| `npm test` (`tests/rules.test.mjs`) | 1421/1421 pass, 0 fail |
 | `node --check` on all modules | clean (`js/*.js`, `server.js`, `tests/*.mjs`) |
 | `tests/server.smoke.mjs` (against `node server.js 39307`) | PASS — 10/10, 0 fail |
-| `tests/e2e.mjs` (headless Chrome) | not present; the shipped smoke is HTTP-level only |
+| `tests/e2e.mjs` (headless Chrome, desktop + mobile) | PASS — 25 steps, no page errors |
 | HTTP fuzz of `server.js` (directories, traversal, malformed encodings, 20 malformed bodies on all 5 API routes) | survived; no crash, no traversal |
 
-## Confirmed defects
+## Resolved defects (all confirmed, fixed 2026-09-05)
 
 Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against the shipped modules.
+Each is now RESOLVED per the note at the end of its entry.
 
 ### 1. The daily board validates against a level the client chose, not the published one
 
@@ -41,6 +42,12 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
   forged-tier : score=8755 -> 200 {"ok":true,"rank":2,"casual":false}
   ```
 
+- **RESOLVED 2026-09-05:** `server.js` now derives daily submissions from the server-published board. For a
+  `daily-YYYY-MM-DD` board it regenerates via `dailyLevel(date)` and ignores any client-supplied
+  `tier`/`mechanics` (and requires the envelope's `levelId`/`seed` to equal the published daily). A
+  command log solved against a forged tier no longer matches the published board: verified with a real
+  tier-5/484-cell solved replay on the current daily (real tier 4) → `422 score mismatch`.
+
 ### 2. A submission with no replay at all takes rank 1 on the daily board
 
 - **File:** `server.js:68-76` (`validateEntry`, the no-envelope branch) and `server.js:186-195`
@@ -62,6 +69,11 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
     NoReplay=20000(casual=true)  honest-daily=6520(casual=false)  Smoke=6320(casual=false)
   ```
 
+- **RESOLVED 2026-09-05:** the server always validates via replay, so a leaderboard submission with no
+  replay log is now rejected outright (`422 score rejected: missing replay log`) instead of being
+  accepted at `casual:true` and ranked against validated runs. Verified: `POST …/daily-<today>` with
+  `{"score":20000}` and no `envelope` → `422 missing replay log`.
+
 ### 3. Cloud saves have no identity binding — any key can be read or overwritten by anyone
 
 - **File:** `server.js:132-155` (`GET`/`POST /api/v1/save`)
@@ -81,6 +93,12 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
 
   Severity today is limited: `saveDoc`/`loadDoc` are defined in `js/platform.js:47-72` but no module in
   `js/` calls them, so the client never populates this store. The endpoint is nonetheless live.
+
+- **RESOLVED 2026-09-05:** save documents are now scoped to the requesting peer address — keys are stored
+  as `ip:<sanitised-remote-address>|<key>` via `scopedSaveKey()` (`server.js`), so a different client can
+  no longer read or overwrite another's document by naming its key. Same-peer GET/POST still round-trips.
+  (The game has no account/token layer, so the peer address is the only available identity; noted as a
+  residual limitation rather than hardening this offline build further.)
 
 ### 4. `select` accepts a non-integer or string colour, which then makes every correct fill "wrong-color"
 
@@ -102,6 +120,10 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
     fill a cell targeting 1   err=wrong-color selected="1" invalid=1 remainingMoves=388
   ```
 
+- **RESOLVED 2026-09-05:** `js/rules.js` `select` guard now requires `Number.isInteger(c)` before the
+  range check, so `1.5` and `"1"` return `ERR.BAD_COLOR` and mutate nothing. Regression test added in
+  `tests/rules.test.mjs`.
+
 ### 5. `fill` accepts non-integer cell indices, and `cell: "0"` actually fills cell 0
 
 - **File:** `js/rules.js:253` / `js/rules.js:183`
@@ -121,6 +143,10 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
   fill cell "0"   err=undefined   invalid=0 moves=1 remainingMoves=388   <- accepted
   ```
 
+- **RESOLVED 2026-09-05:** `js/rules.js` `fill` guard in `applyCommand` and `explainFill` now requires
+  `Number.isInteger(cell)`, so `2.5`, `NaN` and `"0"` return `ERR.OUT_OF_BOUNDS` and burn no invalid/move.
+  Regression test added in `tests/rules.test.mjs`.
+
 ### 6. `hashState` cannot distinguish a numeric field from its string form
 
 - **File:** `js/rules.js:134-142` (`hashState`)
@@ -132,6 +158,10 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
 - **Evidence:** `hashState({...base, selected: 1.5}) === hashState({...base, selected: '1.5'})` → `true`.
   (`state.fills` is only ever 0/1 — `js/rules.js:266`, `js/rules.js:288` — so `fills.join('')` is
   unambiguous; the collision is in the scalar fields.)
+
+- **RESOLVED 2026-09-05:** `hashState` now serialises the field vector with `JSON.stringify`, which
+  preserves scalar types, so `selected: 1.5` and `selected: '1.5'` (and `remainingMoves: 7` vs `'7'`)
+  produce distinct hashes. Regression tests added in `tests/rules.test.mjs`.
 
 ## Suspected — not confirmed
 
@@ -175,9 +205,10 @@ Defects 1-3 were reproduced against a running copy of `server.js`; 4-6 against t
 
 ## Not tested
 
-- The browser UI: this game ships no headless-browser test, and the shipped `tests/server.smoke.mjs` is
-  HTTP-level only. Rendering, input, accessibility and responsive layout were not exercised.
-- Audio output (`js/audio.js`).
+- The browser UI: rendering, input, accessibility and responsive layout were previously not exercised.
+  `tests/e2e.mjs` (headless Chrome, desktop + mobile) now covers the core play loop, settings,
+  hint/undo, pause/resume and navigation, and passes 25 steps with no page errors (2026-09-05).
+- Accessibility-focused and audio output (`js/audio.js`) beyond the e2e's smoke coverage.
 - Hosted/StarHermit integration in `js/platform.js` beyond reading the code (`saveDoc`/`loadDoc` have no
   callers in `js/`).
 

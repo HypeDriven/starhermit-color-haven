@@ -132,12 +132,15 @@ export function migrate(s) {
 
 /* Stable hash over the fields that define simulation truth. */
 export function hashState(state) {
-  const key = [
+  // JSON.stringify preserves scalar types, so a numeric field (1.5) hashes
+  // differently from its string form ("1.5") — the join(+sep) coercion used
+  // before could not. state.fills is only ever 0/1, so join('') stays unambiguous.
+  const key = JSON.stringify([
     state.v, state.levelId, state.seed, state.mode, state.tick,
     state.selected, state.filled, state.moves, state.invalid,
     state.hints, state.undos, state.elapsedMs, state.remainingMoves,
     state.status, state.terminalReason, state.fills.join(''),
-  ].join('|');
+  ]);
   return hashString(key).toString(16).padStart(8, '0');
 }
 
@@ -180,7 +183,7 @@ export function listLegalActions(state, level) {
 export function explainFill(state, level, cell) {
   if (state.status !== 'active') return ERR.GAME_OVER;
   if (state.remainingMoves === 0) return ERR.MOVES_EXHAUSTED;
-  if (cell == null || cell < 0 || cell >= level.targets.length) return ERR.OUT_OF_BOUNDS;
+  if (!Number.isInteger(cell) || cell < 0 || cell >= level.targets.length) return ERR.OUT_OF_BOUNDS;
   if (state.fills[cell]) return ERR.ALREADY_FILLED;
   if (state.selected == null) return ERR.NO_SELECTION;
   if (level.targets[cell] !== state.selected) return ERR.WRONG_COLOR;
@@ -234,7 +237,7 @@ export function applyCommand(state, level, cmd) {
     case 'select': {
       if (s.status !== 'active') return fail(ERR.GAME_OVER);
       const c = cmd.color;
-      if (c == null || c < 0 || c >= level.paletteSize) return fail(ERR.BAD_COLOR);
+      if (!Number.isInteger(c) || c < 0 || c >= level.paletteSize) return fail(ERR.BAD_COLOR);
       if (s.selected === c) {
         accept();
         events.push({ type: 'select', color: c, reselect: true });
@@ -250,7 +253,7 @@ export function applyCommand(state, level, cmd) {
       if (s.status !== 'active') return fail(ERR.GAME_OVER);
       if (s.remainingMoves === 0) return fail(ERR.MOVES_EXHAUSTED);
       const cell = cmd.cell;
-      if (cell == null || cell < 0 || cell >= level.targets.length) return fail(ERR.OUT_OF_BOUNDS);
+      if (!Number.isInteger(cell) || cell < 0 || cell >= level.targets.length) return fail(ERR.OUT_OF_BOUNDS);
       if (s.fills[cell]) return fail(ERR.ALREADY_FILLED);
       if (s.selected == null) return fail(ERR.NO_SELECTION);
       if (level.targets[cell] !== s.selected) {
