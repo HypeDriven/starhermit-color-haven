@@ -7,7 +7,7 @@
 
 import { TERMINAL, listLegalActions, hashString } from './rules.js';
 import {
-  THEMES, generateLevel, journeyStages, journeyLevel, dailyLevel, dailyInfo,
+  THEMES, generateLevel, journeyLevel, dailyLevel, dailyInfo,
   tutorialLessons, tierSpec, TIERS,
 } from './content.js';
 import { GameSession } from './session.js';
@@ -18,14 +18,14 @@ import {
   $, $$, el, toast, banner, announce, announceAlert, formatMs,
   showScreen, closeScreen, clearScreens, currentScreen,
   loadSettings, saveSettings, applySettingsClasses,
-  loadProgress, saveProgress, recordCompletion, starCount,
+  loadProgress, saveProgress, recordCompletion,
   journeyProgressSummary, nextJourneyStage,
   renderPalette, updateHUD, setObjective, setTopbarStatus,
   renderResults, renderJourney, renderHelp, renderScores,
 } from './ui.js';
 import { paletteFor } from './content.js';
 
-const SNAPSHOT_KEY = 'colorhaven.snapshot';
+const SNAPSHOT_KEY = 'colorhaven.snapshot.v2';
 
 class App {
   constructor() {
@@ -58,7 +58,7 @@ class App {
     }
     $('#app').hidden = false;
     await this.platform.init();
-    if (this.platform.consentAsked === undefined) this.platform.setConsent(true); // anonymous aggregate only
+    this.platform.setConsent(true); // anonymous aggregate only
 
     this.renderer = new PaperRenderer($('#canvas-host'), {
       quality: this.settings.quality,
@@ -125,6 +125,12 @@ class App {
     $('#btn-journey-back').addEventListener('click', () => closeScreen());
     $('#btn-pause').addEventListener('click', () => this.pauseGame('user'));
 
+    $('#btn-continue').addEventListener('click', () => {
+      this.audio.unlock(); this.audio.uiTick();
+      this.resumeSnapshot();
+    });
+    $('#btn-results-scores').addEventListener('click', () => this._showBoard());
+
     $('#btn-play').addEventListener('click', () => {
       this.audio.unlock(); this.audio.uiTick();
       if (!this.settings.tutorialDone) { this.startLearn(); return; }
@@ -160,6 +166,16 @@ class App {
   }
 
   _updateTitle() {
+    const wrap = this._readSnapshot();
+    const btnContinue = $('#btn-continue');
+    if (wrap) {
+      const s = wrap.snap.state;
+      btnContinue.hidden = false;
+      btnContinue.querySelector('.btn-sub').textContent =
+        `${wrap.snap.level.title} · ${s.filled}/${s.total} regions`;
+    } else {
+      btnContinue.hidden = true;
+    }
     const jp = journeyProgressSummary(this.progress);
     $('#journey-summary').textContent = `${jp.done}/${jp.total} stages · ${jp.stars}★`;
     const info = dailyInfo(this.platform.now());
@@ -324,8 +340,10 @@ class App {
   }
 
   _startLesson(lesson, lessons, lessonIdx) {
-    this.tutorial = { lesson, lessons, lessonIdx, stepIdx: 0, count: 0 };
+    // startGame() tears the previous round down (which clears this.tutorial),
+    // so the lesson must be installed *after* the round exists.
     this.startGame(lesson.level, 'learn', { ranked: false });
+    this.tutorial = { lesson, lessons, lessonIdx, stepIdx: 0, count: 0 };
     this._tutorialStep();
     this.platform.track('tutorial_step', { lesson: lesson.id, step: 0 });
   }
@@ -339,7 +357,7 @@ class App {
   /* Round lifecycle                                                   */
   /* ---------------------------------------------------------------- */
 
-  startGame(level, mode, { ranked = false, boardId = null } = {}) {
+  startGame(level, mode, { ranked = false, boardId = null, session = null } = {}) {
     this._teardownRound();
     clearScreens();
 
@@ -347,7 +365,7 @@ class App {
     this.mode = mode;
     this.ranked = ranked;
     this.boardId = boardId;
-    this.session = new GameSession(level, { mode });
+    this.session = session || new GameSession(level, { mode });
     this.palette = paletteFor(level, this.settings.cvdPalette);
     this.focusCell = Math.floor(level.targets.length / 2);
 
@@ -392,6 +410,7 @@ class App {
     }
     this.tutorial = null;
     banner(null);
+    this._setBannerAction(null);
     $('#btn-pause').hidden = true;
     $('#palette-tray').textContent = '';
     this.audio.stopMusic();
@@ -431,7 +450,47 @@ class App {
 
   _saveSnapshot() {
     if (!this.session || this.session.isOver || this.mode === 'learn') return;
-    try { localStorage.setItem(SNAPSHOT_KEY, this.session.snapshot()); } catch { /* quota */ }
+    try {
+      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
+        ranked: this.ranked,
+        boardId: this.boardId,
+        snap: JSON.parse(this.session.snapshot()),
+      }));
+    } catch { /* quota */ }
+  }
+
+  _clearSnapshot() {
+    try { localStorage.removeItem(SNAPSHOT_KEY); } catch { /* noop */ }
+  }
+
+  /** The saved round, or null when there is nothing usable to resume. */
+  _readSnapshot() {
+    let raw = null;
+    try { raw = localStorage.getItem(SNAPSHOT_KEY); } catch { return null; }
+    if (!raw) return null;
+    try {
+      const wrap = JSON.parse(raw);
+      if (!wrap || !wrap.snap || !wrap.snap.level || !wrap.snap.state) return null;
+      const state = wrap.snap.state;
+      if (!Number.isInteger(state.filled) || !Number.isInteger(state.total) ||
+          state.total < 1 || state.filled < 0 || state.filled > state.total) return null;
+      const restored = GameSession.restore(wrap.snap);
+      if (!restored || restored.isOver) return null;
+      return wrap;
+    } catch { return null; }
+  }
+
+  /** Resume the autosaved round (spec §3: reconnect from the durable snapshot). */
+  resumeSnapshot() {
+    const wrap = this._readSnapshot();
+    const session = wrap && GameSession.restore(wrap.snap);
+    if (!session || session.isOver) { this._clearSnapshot(); this._updateTitle(); return; }
+    this.startGame(session.level, session.mode, {
+      ranked: !!wrap.ranked, boardId: wrap.boardId || null, session,
+    });
+    banner(`Resumed — ${session.state.filled} of ${session.state.total} regions already filled.`);
+    setTimeout(() => banner(null), 2600);
+    announce('Round resumed.');
   }
 
   /* ---------------------------------------------------------------- */
@@ -488,7 +547,7 @@ class App {
   async _endRound() {
     const st = this.session.state;
     const sc = this.session.scoreBreakdown;
-    try { localStorage.removeItem(SNAPSHOT_KEY); } catch { /* noop */ }
+    this._clearSnapshot();
 
     const dateIso = this.mode === 'daily' ? dailyInfo(this.platform.now()).date : null;
     const newAch = recordCompletion(this.progress, {
@@ -524,9 +583,20 @@ class App {
       newAchievements: newAch, rankInfo,
     });
     $('#btn-results-next').textContent = this.mode === 'journey' ? 'Next stage' : 'Play again';
+    $('#btn-results-scores').hidden = !(this.ranked && this.boardId);
     announceAlert(st.terminalReason === TERMINAL.COMPLETED
       ? `Complete! Score ${sc.total}.` : 'Out of moves.');
     setTimeout(() => showScreen('results'), this.settings.reducedMotion ? 200 : 1200);
+  }
+
+  /** Open the leaderboard for the round just played (ranked modes only). */
+  async _showBoard() {
+    if (!this.boardId) return;
+    this.audio.uiTick();
+    const entries = await this.platform.fetchBoard(this.boardId);
+    $('#scores-sub').textContent = `${this.boardId} · ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`;
+    renderScores($('#scores-table tbody'), entries);
+    showScreen('scores');
   }
 
   _resultsNext() {
@@ -559,19 +629,39 @@ class App {
     const step = t.lesson.steps[t.stepIdx];
     if (!step) return;
     banner(step.text + (step.require == null ? '  (tap this message to continue)' : ''));
-    if (step.require == null) {
-      $('#hud-banner').style.cursor = 'pointer';
-      $('#hud-banner').onclick = () => this._tutorialAdvance();
-    } else {
-      $('#hud-banner').style.cursor = '';
-      $('#hud-banner').onclick = null;
-    }
+    this._setBannerAction(step.require == null ? () => this._tutorialAdvance() : null);
     announce(step.text);
+  }
+
+  /**
+   * Make the HUD banner an activatable control (or plain text when fn is null).
+   * Tutorial steps that wait on acknowledgement must be reachable by keyboard,
+   * not only by pointer.
+   */
+  _setBannerAction(fn) {
+    const b = $('#hud-banner');
+    if (!b) return;
+    if (fn) {
+      b.style.cursor = 'pointer';
+      b.setAttribute('role', 'button');
+      b.setAttribute('tabindex', '0');
+      b.onclick = fn;
+      b.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); }
+      };
+    } else {
+      b.style.cursor = '';
+      b.removeAttribute('role');
+      b.removeAttribute('tabindex');
+      b.onclick = null;
+      b.onkeydown = null;
+    }
   }
 
   _tutorialAdvance() {
     const t = this.tutorial;
     if (!t) return;
+    const finishedStep = t.lesson.steps[t.stepIdx];
     t.stepIdx++;
     t.count = 0;
     this.platform.track('tutorial_step', { lesson: t.lesson.id, step: t.stepIdx });
@@ -579,8 +669,13 @@ class App {
       // Lesson done: its completion arrives via the 'complete' event,
       // or we end directly if the lesson doesn't require completion.
       if (this.session && !this.session.isOver) {
-        banner('Lesson complete! Tap to continue.');
-        $('#hud-banner').onclick = () => this._resultsNext();
+        if (finishedStep && finishedStep.require == null) {
+          // The closing note was already acknowledged — don't ask twice.
+          this._resultsNext();
+        } else {
+          banner('Lesson complete! Tap to continue.');
+          this._setBannerAction(() => this._resultsNext());
+        }
       }
       return;
     }
@@ -680,8 +775,6 @@ class App {
 
   _onKey(e) {
     if (!this.session || this.session.paused || this.session.isOver) return;
-    const lv = this.level;
-    const w = lv.w;
     let handled = true;
     switch (e.key) {
       case 'ArrowLeft': this._moveFocus(-1, 0); break;

@@ -7,7 +7,6 @@
 <title>Color Haven</title>
 <meta name="description" content="Color Haven — a relaxing paint-by-numbers paper-art game.">
 <link rel="stylesheet" href="css/style.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23fdf8ef'/><rect x='5' y='5' width='10' height='10' rx='2' fill='%23e0604e'/><rect x='17' y='5' width='10' height='10' rx='2' fill='%235d9fd6'/><rect x='5' y='17' width='10' height='10' rx='2' fill='%235f9e52'/><rect x='17' y='17' width='10' height='10' rx='2' fill='%23e8a33d'/></svg>">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
 </script>
@@ -99,6 +98,7 @@
     <div class="screen-inner title-inner">
       <h1 id="title-h" class="game-title">Color Haven</h1>
       <p class="tagline">Fill numbered regions. Finish the paper picture. Breathe.</p>
+      <button id="btn-continue" type="button" class="primary-btn big" hidden>Continue<span class="btn-sub"></span></button>
       <button id="btn-play" type="button" class="primary-btn big">Play</button>
       <div class="mode-grid">
         <button class="mode-btn" data-mode="learn" type="button"><strong>Learn</strong><span>Short guided lessons</span></button>
@@ -146,6 +146,7 @@
       <div class="row gap wrap">
         <button id="btn-results-next" type="button" class="primary-btn">Next</button>
         <button id="btn-results-replay" type="button" class="ghost-btn">Replay</button>
+        <button id="btn-results-scores" type="button" class="ghost-btn" hidden>Leaderboard</button>
         <button id="btn-results-home" type="button" class="ghost-btn">Home</button>
       </div>
     </div>

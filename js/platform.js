@@ -68,9 +68,11 @@ export class Platform {
     const list = await this.fetchBoard(board);
     list.push(entry);
     list.sort((a, b) => b.score - a.score || a.elapsedMs - b.elapsedMs);
+    // Rank is read from the full sorted list: an entry that falls outside the
+    // stored top 100 still has a real placement, not rank 0.
+    const rank = list.findIndex(e => e.sessionId === entry.sessionId) + 1;
     const trimmed = list.slice(0, 100);
     try { localStorage.setItem(LS_PREFIX + 'board.' + board, JSON.stringify(trimmed)); } catch { /* quota */ }
-    const rank = trimmed.findIndex(e => e.sessionId === entry.sessionId) + 1;
     return { ok: true, rank, local: true };
   }
 

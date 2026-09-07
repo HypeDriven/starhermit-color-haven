@@ -10,7 +10,7 @@ alongside the game's own unit tests and server smoke suite.
 | `npm test` (`tests/rules.test.mjs`) | 1421/1421 pass, 0 fail |
 | `node --check` on all modules | clean (`js/*.js`, `server.js`, `tests/*.mjs`) |
 | `tests/server.smoke.mjs` (against `node server.js 39307`) | PASS — 10/10, 0 fail |
-| `tests/e2e.mjs` (headless Chrome, desktop + mobile) | PASS — 25 steps, no page errors |
+| `tests/e2e.mjs` (headless Chrome, desktop + mobile + learn + ranked) | PASS — 33 steps, no page errors (2026-09-07) |
 | HTTP fuzz of `server.js` (directories, traversal, malformed encodings, 20 malformed bodies on all 5 API routes) | survived; no crash, no traversal |
 
 ## Resolved defects (all confirmed, fixed 2026-09-05)
@@ -163,6 +163,51 @@ Each is now RESOLVED per the note at the end of its entry.
   preserves scalar types, so `selected: 1.5` and `selected: '1.5'` (and `remainingMoves: 7` vs `'7'`)
   produce distinct hashes. Regression tests added in `tests/rules.test.mjs`.
 
+## Resolved defects (review pass 2026-09-07)
+
+### 7. Learn mode never ran its lessons — the tutorial was erased as it started
+
+- **File:** `js/main.js` (`_startLesson`)
+- **Trigger:** title → **Learn** (or the first **Play** for a new player, which routes to Learn).
+- **Behaviour:** `_startLesson()` assigned `this.tutorial` and *then* called `startGame()`, whose first
+  action is `_teardownRound()` — which sets `this.tutorial = null`. Every downstream guard
+  (`_tutorialStep`, `_tutorialEvent`, `_tutorialAdvance`, the `learn` branches of `restartRound` and
+  `_resultsNext`) short-circuits on a null tutorial, so Learn mode presented no coach banner, never
+  advanced a step, never chained lesson 1 → 2 → 3, and never set `settings.tutorialDone`.
+- **Expected:** spec.md §2 — Learn is a first-class mode of short guided lessons.
+- **RESOLVED 2026-09-07:** the lesson is installed after `startGame()` returns. Covered by a new
+  `tests/e2e.mjs` "learn" pass (banner appears, advances on select → fill → fill-all → acknowledge,
+  chains into lesson 2, and survives Restart).
+
+### 8. The leaderboard screen could not be opened from anywhere
+
+- **File:** `index.html` / `js/main.js`
+- **Behaviour:** `#screen-scores` and `renderScores()` were fully implemented, and ranked rounds
+  (daily, challenge, score chase) submitted entries, but no control anywhere in the UI called
+  `showScreen('scores')` — the board was write-only.
+- **RESOLVED 2026-09-07:** the results screen now offers **Leaderboard** after a ranked round, which
+  loads the board via `platform.fetchBoard()`. Covered by the new e2e "ranked" pass.
+
+### 9. The autosaved round could never be resumed
+
+- **File:** `js/main.js` (`_saveSnapshot`) / `js/session.js` (`GameSession.restore`)
+- **Behaviour:** every state change autosaved a snapshot and `GameSession.restore()` existed, but
+  nothing ever read the key, so leaving a round (or closing the tab) silently discarded it.
+- **RESOLVED 2026-09-07:** the title screen shows **Continue** with the saved piece and progress when a
+  snapshot exists; it restores the session, mode, ranked flag and board id. Snapshot key bumped to
+  `colorhaven.snapshot.v2` for the wrapped format. Covered by e2e on desktop and mobile.
+
+### 10. Local leaderboard rank reported 0 for entries outside the stored top 100
+
+- **File:** `js/platform.js` (`submitScore`) — the rank was read from the list *after* `slice(0, 100)`,
+  so a 101st-place entry produced `findIndex() === -1` → `rank: 0` on the results screen.
+- **RESOLVED 2026-09-07:** rank is taken from the full sorted list before trimming.
+
+### 11. A stale favicon overrode the game artwork
+
+- **File:** `index.html` — a placeholder `data:` icon link was still present after `favicon.svg` was
+  added, and being last it won. The `data:` link is removed.
+
 ## Suspected — not confirmed
 
 ### 1. `replay(level, opts, commands, 0)` silently records no periodic hashes
@@ -202,6 +247,15 @@ Each is now RESOLVED per the note at the end of its entry.
   caught by the outer handler (`server.js:235-238`), returning 500 rather than the more accurate 400.
   The process survives: 20 malformed bodies were POSTed to each of the five API routes with no crash.
   Worth tidying, but it is a status-code accuracy issue, not a defect in the four categories above.
+
+## Open
+
+- **No localization layer.** All player-facing strings are hard-coded English literals in `index.html`,
+  `js/ui.js`, `js/main.js` and `js/content.js`; there is no string table, no locale selection and no
+  translations. spec.md line 162 lists localization as a `ui` responsibility, and line 243 asks that
+  labels be checked at 30% translation expansion; the shared authoring guidance asks for US/UK English,
+  es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT. Extracting and translating the full
+  string set is a feature-sized change, deliberately out of scope for this defect-fix pass.
 
 ## Not tested
 
