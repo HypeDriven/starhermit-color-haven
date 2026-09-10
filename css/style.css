@@ -248,6 +248,16 @@ body.left-handed #palette-tray { flex-direction: row-reverse; }
 .screen-inner.wide { width: min(48rem, 100%); }
 .screen-inner h1 { margin-top: 0; }
 
+/* Title backdrop: authored paper-cut key art (assets/title-backdrop.webp) under a
+   cream wash so the card and text stay readable; the wash alone is the fallback. */
+#screen-title {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--bg) 55%, transparent), color-mix(in srgb, var(--bg) 35%, transparent)),
+    url("../assets/title-backdrop.webp");
+  background-size: cover;
+  background-position: center bottom;
+}
+body.high-contrast #screen-title { background-image: none; }
 .title-inner { text-align: center; }
 .game-title { font-size: 2.4rem; margin: 0.2rem 0 0; letter-spacing: 0.01em; }
 .tagline { color: var(--ink-soft); margin: 0.4rem 0 1.2rem; max-width: 70ch; }
@@ -282,6 +292,13 @@ body.left-handed #palette-tray { flex-direction: row-reverse; }
   font-variant-numeric: tabular-nums;
 }
 .score-table td.total, .score-table th:last-child { font-weight: 700; }
+
+.results-art {
+  display: block; width: 100%; max-height: 11rem; object-fit: cover;
+  border-radius: 12px; margin: 0.6rem 0 0.2rem; border: 1px solid var(--panel-edge);
+}
+.results-art[hidden] { display: none; }
+@media (max-height: 500px) { .results-art { display: none; } }
 
 .ach-list { margin-top: 0.8rem; display: grid; gap: 0.35rem; }
 .ach-item {
@@ -332,6 +349,7 @@ input[type="range"] { width: 8rem; }
   #play-area { flex: 1 1 auto; }
   #rail-left, #rail-right { flex: 0 0 auto; }
   #stats-card, #score-card { display: none; } /* drawers: reachable via pause */
+  .results-art { max-height: 7rem; } /* keep the breakdown and buttons within one thumb-scroll */
   .mode-grid { grid-template-columns: repeat(2, 1fr); }
   .topbar-status { display: none; }
   .pal-btn { min-width: 3.6rem; }

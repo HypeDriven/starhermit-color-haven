@@ -389,6 +389,7 @@ class App {
     this.audio.startAmbience();
     this.audio.startMusic();
     this.audio.setMusicIntensity(0.2);
+    this.audio.roundStart();
     this.platform.activityStart(mode);
     this.platform.track('start', { mode });
 
@@ -513,10 +514,12 @@ class App {
         case 'fill':
           this.audio.fill();
           this._haptic(12);
+          this._checkColorComplete(state, ev.color);
           break;
         case 'hint':
           this.audio.hint();
           toast('Hint placed a region for you (−25 pts)');
+          this._checkColorComplete(state, ev.color);
           break;
         case 'undo':
           this.audio.undo();
@@ -542,6 +545,16 @@ class App {
       if (this.tutorial) this._tutorialEvent(ev);
     }
     if (result && result.paused) { /* input during pause: ignore */ }
+  }
+
+  /** The fill that just landed emptied its colour: cue it (the board itself may still be open). */
+  _checkColorComplete(state, color) {
+    if (state.status !== 'active' || color == null) return;
+    const rem = listLegalActions(state, this.level).fillableFor;
+    if (rem[color] === 0) {
+      this.audio.colorComplete();
+      announce(`Color ${color + 1}, ${this.palette[color].name} complete`);
+    }
   }
 
   async _endRound() {
@@ -630,6 +643,7 @@ class App {
     if (!step) return;
     banner(step.text + (step.require == null ? '  (tap this message to continue)' : ''));
     this._setBannerAction(step.require == null ? () => this._tutorialAdvance() : null);
+    if (t.stepIdx > 0) this.audio.tutorialStep(); // step 0 lands with the board-unfold cue
     announce(step.text);
   }
 

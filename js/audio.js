@@ -102,13 +102,13 @@ export class AudioEngine {
   _sfxRecord(name) {
     let rec = this._sfx.get(name);
     if (rec) return rec;
-    rec = { status: 'loading', buffer: null };
+    rec = { status: 'loading', buffer: null, promise: null };
     this._sfx.set(name, rec);
-    fetch(`sfx/${name}.opus`)
+    rec.promise = fetch(`sfx/${name}.opus`)
       .then((r) => { if (!r.ok) throw new Error(`http ${r.status}`); return r.arrayBuffer(); })
       .then((ab) => this.ctx.decodeAudioData(ab))
-      .then((buf) => { rec.buffer = buf; rec.status = 'ready'; })
-      .catch(() => { rec.status = 'failed'; });
+      .then((buf) => { rec.buffer = buf; rec.status = 'ready'; return rec; })
+      .catch(() => { rec.status = 'failed'; return rec; });
     return rec;
   }
 
@@ -177,11 +177,40 @@ export class AudioEngine {
     if (this._trySample('achievement-chime')) return;
     [880, 1108].forEach((f, i) => setTimeout(() => this._blip({ freq: f, dur: 0.2, gain: 0.14 }), i * 110));
   }
+  /** A new board is laid out on the table (round start / restart / resume). */
+  roundStart() {
+    if (this._trySample('board-unfold')) return;
+    this._noise({ dur: 0.22, gain: 0.10, lowpass: 1800 }); // paper smoothed flat
+  }
+  /** The last region of one palette colour was filled (tray button turns "done"). */
+  colorComplete() {
+    this._caption('color complete');
+    if (this._trySample('color-complete')) return;
+    [523, 659].forEach((f, i) => setTimeout(() => this._blip({ freq: f, dur: 0.12, type: 'triangle', gain: 0.13 }), i * 70));
+  }
+  /** The Learn-mode coach banner advanced to its next step. */
+  tutorialStep() {
+    if (this._trySample('tutorial-page')) return;
+    this._noise({ dur: 0.10, gain: 0.06, lowpass: 2600 }); // page turn
+  }
 
   /* ------------------------- ambience + music ------------------------- */
 
   startAmbience() {
     if (!this.ctx || this._ambNodes) return;
+    // Authored studio room tone (sfx/ambience-studio.opus) loops on the
+    // ambience bus; the synthesized noise bed below covers loading/failure
+    // and is swapped out once the clip is decoded.
+    const rec = this._sfxRecord('ambience-studio');
+    if (rec.status === 'ready') { this._startAmbienceLoop(rec.buffer); return; }
+    if (rec.status === 'loading' && rec.promise) {
+      rec.promise.then((r) => {
+        if (r.status === 'ready' && this._ambNodes && this._ambNodes.synth) {
+          this.stopAmbience();
+          this._startAmbienceLoop(r.buffer);
+        }
+      });
+    }
     // Quiet filtered-noise room tone.
     const len = this.ctx.sampleRate * 2;
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -194,7 +223,19 @@ export class AudioEngine {
     const g = this.ctx.createGain(); g.gain.value = 0.35;
     src.connect(f); f.connect(g); g.connect(this.buses.ambience);
     src.start();
-    this._ambNodes = { src, g };
+    this._ambNodes = { src, g, synth: true };
+  }
+
+  _startAmbienceLoop(buffer) {
+    if (!this.ctx || this._ambNodes) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer; src.loop = true;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0, this.ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.8, this.ctx.currentTime + 1.2);
+    src.connect(g); g.connect(this.buses.ambience);
+    src.start();
+    this._ambNodes = { src, g, synth: false };
   }
 
   stopAmbience() {

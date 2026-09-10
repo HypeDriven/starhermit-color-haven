@@ -16,3 +16,7 @@ Generated with MOSS-SoundEffect v2.0, 48 kHz mono Opus (96 kbps VBR, loudness-no
 | level-complete.opus | complete | A warm rising four-note marimba flourish with a soft paper rustle, a small gentle celebration finish. |
 | moves-exhausted.opus | movesExhausted | A soft descending two-note wooden tone, like a small calm sigh, low and ending quietly. |
 | achievement-chime.opus | achievement | Two bright sparkling bell notes in quick succession with a light shimmer tail, a small reward jingle. |
+| board-unfold.opus | roundStart | A sheet of thick craft paper being unfolded and smoothed flat onto a wooden table, soft crisp paper crease and a gentle palm sweep, quick and calm. |
+| color-complete.opus | colorComplete | A soft satisfying wooden xylophone double tap rising in pitch, ending with a tiny paper flick, warm and brief, a small task-done cue. |
+| tutorial-page.opus | tutorialStep | A single soft page turn of a small paper notebook followed by a faint pencil tick, quiet and friendly. |
+| ambience-studio.opus | ambience | Quiet art studio room tone: soft distant birdsong through an open window, a faint steady breeze, an occasional gentle paper rustle, calm, smooth and continuous with no sudden events. |

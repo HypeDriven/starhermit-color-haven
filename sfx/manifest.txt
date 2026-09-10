@@ -1,0 +1,19 @@
+# Color Haven — SFX manifest (canonical). One clip per line:
+# file | event id (method on AudioEngine in js/audio.js) | description of the sound | usage context
+# All clips: MOSS-SoundEffect v2, 48 kHz mono Opus 96 kbps, loudness-normalised. Every event also has a WebAudio synth fallback.
+sfx/ui-tick.opus | uiTick | A single soft wooden UI tick, like a fingertip tapping a small lacquered wooden button, very short and quiet. | Any menu, topbar or overlay button press (title, settings, help, pause, results).
+sfx/palette-select.opus | select | A gentle dab of a brush picking up paint from a palette well, soft plastic click with a light wet paint dab. | Palette tray button or number key 1-8 selects a colour.
+sfx/paint-fill-1.opus | fill | A short soft brush stroke spreading wet paint across textured watercolor paper, one smooth swipe. | A region is filled with the correct colour (one of four variants picked at random).
+sfx/paint-fill-2.opus | fill | A quick spongy dab of acrylic paint pressed onto paper, soft wet press and release. | Fill variant 2.
+sfx/paint-fill-3.opus | fill | Soft bristles dragging thick pigment in one short stroke over coarse paper, gentle scrape. | Fill variant 3.
+sfx/paint-fill-4.opus | fill | A light roller of paint gliding briefly over paper with a soft creamy wet sound. | Fill variant 4.
+sfx/paper-undo.opus | undo | A piece of paper being gently peeled back from a stack, soft papery rustle, brief lifting sound. | Undo lifts the most recent player fill (button, U key, gamepad X).
+sfx/hint-chime.opus | hint | A single soft glass chime note with a gentle shimmer, friendly and quiet. | A hint fills a region for the player (button, H key, gamepad Y).
+sfx/invalid-thud.opus | invalid | A dull soft double knock on cardboard, muted and low, a gentle not-allowed thud. | A region is tapped with the wrong colour selected (paired with a toast naming the needed colour).
+sfx/level-complete.opus | complete | A warm rising four-note marimba flourish with a soft paper rustle, a small gentle celebration finish. | The last region of the board is filled; precedes the results screen.
+sfx/moves-exhausted.opus | movesExhausted | A soft descending two-note wooden tone, like a small calm sigh, low and ending quietly. | A move-limited round (Daily, Challenge, mastery stages) runs out of moves before completion.
+sfx/achievement-chime.opus | achievement | Two bright sparkling bell notes in quick succession with a light shimmer tail, a small reward jingle. | A new achievement unlocks on the results screen.
+sfx/board-unfold.opus | roundStart | A sheet of thick craft paper being unfolded and smoothed flat onto a wooden table, soft crisp crease and a gentle palm sweep. | A board is laid out: round start, restart, next stage, Continue.
+sfx/color-complete.opus | colorComplete | A soft satisfying wooden xylophone double tap rising in pitch, ending with a tiny paper flick. | The last remaining region of one palette colour is filled (tray button turns to "done").
+sfx/tutorial-page.opus | tutorialStep | A single soft page turn of a small paper notebook followed by a faint pencil tick, quiet and friendly. | The Learn-mode coach banner advances to its next step.
+sfx/ambience-studio.opus | ambience (startAmbience loop) | Quiet art studio room tone: soft distant birdsong through an open window, a faint steady breeze, an occasional gentle paper rustle, continuous. | Looped on the ambience bus for the whole of a round; a filtered-noise bed covers it until decoded.

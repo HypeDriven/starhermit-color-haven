@@ -35,6 +35,7 @@ const MIME = {
   '.json': 'application/json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
   '.opus': 'audio/ogg',
@@ -67,7 +68,8 @@ const server = createServer(async (req, res) => {
   }
 });
 
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+// PORT=<n> pins the test server (assigned port ranges); default is an ephemeral port.
+await new Promise((resolve) => server.listen(+(process.env.PORT || 0), '127.0.0.1', resolve));
 const BASE = `http://127.0.0.1:${server.address().port}`;
 
 const browser = await chromium.launch({

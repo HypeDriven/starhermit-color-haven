@@ -70,5 +70,29 @@
     "seconds": 2,
     "prompt": "Two bright sparkling bell notes in quick succession with a light shimmer tail, a small reward jingle.",
     "event": "achievement"
+  },
+  {
+    "name": "board-unfold",
+    "seconds": 2,
+    "prompt": "A sheet of thick craft paper being unfolded and smoothed flat onto a wooden table, soft crisp paper crease and a gentle palm sweep, quick and calm.",
+    "event": "roundStart"
+  },
+  {
+    "name": "color-complete",
+    "seconds": 1,
+    "prompt": "A soft satisfying wooden xylophone double tap rising in pitch, ending with a tiny paper flick, warm and brief, a small task-done cue.",
+    "event": "colorComplete"
+  },
+  {
+    "name": "tutorial-page",
+    "seconds": 1,
+    "prompt": "A single soft page turn of a small paper notebook followed by a faint pencil tick, quiet and friendly.",
+    "event": "tutorialStep"
+  },
+  {
+    "name": "ambience-studio",
+    "seconds": 12,
+    "prompt": "Quiet art studio room tone: soft distant birdsong through an open window, a faint steady breeze, an occasional gentle paper rustle, calm, smooth and continuous with no sudden events.",
+    "event": "ambience"
   }
 ]

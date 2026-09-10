@@ -291,6 +291,8 @@ export function renderResults({ session, level, mode, newAchievements, rankInfo 
   const sc = session.scoreBreakdown;
   const complete = st.terminalReason === 'completed';
   $('#results-h').textContent = complete ? 'Illustration complete' : 'Round over';
+  const art = $('#results-art');
+  if (art) art.hidden = !complete || art.dataset.failed === '1';
   $('#results-sub').textContent =
     `${level.title} · ${mode}` +
     (complete ? ` · finished in ${formatMs(st.elapsedMs)}` : ' · moves exhausted');
