@@ -12,7 +12,7 @@ import * as THREE from 'three';
 export const CAMERA = {
   TILT_DEG: 52,          // elevation of the camera above the board plane
   DIST_SCALE: 1.55,      // camera distance as multiple of board diagonal
-  VIEW_MARGIN: 1.18,     // orthographic frustum padding around the board
+  VIEW_MARGIN: 1.08,     // orthographic frustum padding around the board
   INTRO_MS: 900,
   TRANSITION_MS: 450,
 };
@@ -74,6 +74,12 @@ export class PaperRenderer {
     this._buildLights();
     this._onResize = this.resize.bind(this);
     window.addEventListener('resize', this._onResize);
+    // The host box also changes without a window resize (coach banner space,
+    // chat sidebar, drawers): follow it directly.
+    if (typeof ResizeObserver === 'function') {
+      this._ro = new ResizeObserver(() => this.resize());
+      this._ro.observe(this.container);
+    }
   }
 
   /* -------------------------------------------------------------- */

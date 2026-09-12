@@ -54,10 +54,31 @@ export function toast(msg, ms = 2600) {
 export function banner(msg) {
   const b = $('#hud-banner');
   if (!b) return;
-  if (msg == null) { b.hidden = true; return; }
+  if (msg == null) { b.hidden = true; reserveCoachSpace(); return; }
   b.textContent = msg;
   b.hidden = false;
+  reserveCoachSpace();
 }
+
+/**
+ * The coach banner gets its own band above the board instead of covering
+ * cells: the play area exposes the banner's height as --coach-h and the
+ * canvas host starts below it.
+ */
+function reserveCoachSpace() {
+  const area = $('#play-area');
+  const b = $('#hud-banner');
+  if (!area || !b) return;
+  requestAnimationFrame(() => {
+    // Short landscape docks the banner beside the board instead (see CSS).
+    const docked = window.matchMedia('(max-height: 500px) and (orientation: landscape)').matches;
+    const h = b.hidden || docked ? 0 : Math.ceil(b.getBoundingClientRect().height) + 12;
+    const w = b.hidden || !docked ? 0 : Math.ceil(b.getBoundingClientRect().width) + 12;
+    area.style.setProperty('--coach-h', h + 'px');
+    area.style.setProperty('--coach-w', w + 'px');
+  });
+}
+window.addEventListener('resize', reserveCoachSpace);
 
 /* ------------------------------------------------------------------ */
 /* Screen manager (one visible overlay at a time; focus restoration)   */
