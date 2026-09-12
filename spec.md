@@ -18,7 +18,7 @@
 | `js/render.js` | `PaperRenderer`: Three.js scene, camera framing, picking, number overlay, tile/undo/invalid/celebrate animations, quality tiers. |
 | `js/ui.js` | DOM helpers, screen stack, settings/progress stores, palette tray, HUD, results/journey/help/leaderboard rendering, achievements. |
 | `js/audio.js` | `AudioEngine`: four buses, authored Opus one-shots with synth fallbacks, studio ambience loop, adaptive pentatonic pad. |
-| `js/platform.js` | StarHermit adapter: `/api/v1/time` probe, local saves/boards, no-op activity/telemetry. |
+| `js/platform.js` | StarHermit adapter: fragment launch token + Bearer + 45-min refresh, profile nickname, cloud-save slot (zip+base64, remote-preferred, debounced, sync status), `/api/v1/time` probe, local saves/boards, no-op activity/telemetry. |
 | `server.js` | Authoritative game script: static files, server time, replay-validated leaderboards, peer-scoped saves. |
 | `sfx/` | 16 Opus clips, `manifest.txt` (canonical), `manifest.json` (generator input), `manifest.md`. |
 | `assets/` | `title-backdrop.webp`, `results-studio.webp` (FLUX.2 key art). `coverart.png` at the root is the store cover. |
@@ -189,10 +189,11 @@ Per https://wiki.starhermit.com/ conventions the game ships `starhermit.txt` (`n
 
 | Feature | Status |
 |---|---|
-| Server time | Used: `GET /api/v1/time` probed at boot and on tab return; round-trip-adjusted offset drives the daily date (`platform.js` `syncTime`, `now`). |
-| Game script | `server.js` serves the distribution, `GET/POST /api/v1/leaderboard/<board>` with replay validation, `GET/POST /api/v1/save` scoped to the peer address, `204` sinks for `/activity`, `/presence`, `/telemetry`. |
-| Leaderboards | Client currently submits to a **local** board in `localStorage` (`platform.js` `submitScore`/`fetchBoard`) and shows rank on results plus the Leaderboard screen; the server board API is exercised by `tests/server.smoke.mjs`. |
-| Identity | Guest id generated locally (`progress.playerId`); launch `token`/`scope` query params are read into memory only, never persisted. |
+| Server time | Used: `GET /api/v1/time` probed at boot and on tab return (Bearer when hosted); round-trip-adjusted offset drives the daily date (`platform.js` `syncTime`, `now`). |
+| Game script | `server.js` serves the distribution, `GET/POST /api/v1/leaderboard/<board>` with replay validation, `GET/POST /api/v1/save` scoped to the peer address (local testing only — the client uses the platform cloud slot), `204` sinks for `/activity`, `/presence`, `/telemetry`. |
+| Leaderboards | Client submits to a **local** board in `localStorage` (`platform.js` `submitScore`/`fetchBoard`) and shows rank on results plus the Leaderboard screen; hosted entries carry the account nickname + id. The server board API is exercised by `tests/server.smoke.mjs`. |
+| Launch token / identity | `#game_token=<jwt>` read from the URL fragment (optional `&session_id=`, stripped after the read; query `?token=`/`?scope=` kept for local dev), decoded for `sub` + `game_scope` (never hard-coded), kept in memory only, sent as `Authorization: Bearer` on every hosted call, and re-minted every 45 min via `POST /api/v1/games/{slug}/launch-token` (60 s retry). The title line shows "Playing as <nickname> · sync status" from `GET /api/v1/users/{sub}/profile` (never usernames, never `/api/v1/me`; `Player <id8>` fallback); offline it shows the local guest. |
+| Cloud save | Used when hosted: the progress document mirrors to one zip+base64 slot at `GET/PUT /api/v1/me/cloud-saves/{slug}` — remote wins on boot, saves debounce 2 s and flush on `pagehide`/hidden with keepalive, and the title line reflects sync status. localStorage stays the offline cache. |
 | Achievements | Local, idempotent unlocks in `progress.achievements`. |
 | Presence / activity / telemetry | Not transmitted (no-ops with a retained event whitelist). |
 | Sessions, rooms, chat, voice | Not used: solo game. |
@@ -241,4 +242,4 @@ Per https://wiki.starhermit.com/ conventions the game ships `starhermit.txt` (`n
 
 - Ship the nine required locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT) via a string table with a language picker defaulting from `navigator.language`.
 - Route ranked submissions through `server.js` (`POST /api/v1/leaderboard/<board>`) when the host is online, keeping the local board as the offline fallback.
-- Cloud-save progression through `/api/v1/save` (`platform.saveDoc/loadDoc` exist but have no callers).
+- Cloud-save conflict handling for the platform slot (today: remote wins on boot).

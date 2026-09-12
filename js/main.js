@@ -59,6 +59,18 @@ class App {
     $('#app').hidden = false;
     await this.platform.init();
     this.platform.setConsent(true); // anonymous aggregate only
+    if (this.platform.hosted) {
+      // Remote save wins over the local cache; sync status keeps the title
+      // line honest while the mirror debounces/flushes.
+      this.platform.onSync(() => this._updateTitle());
+      try { await Promise.race([this.platform.fetchProfile(), new Promise((r) => setTimeout(r, 2000))]); } catch { /* lands later */ }
+      this.platform.loadCloud().then((remote) => {
+        if (!remote || !remote.progress) return;
+        Object.assign(this.progress, remote.progress);
+        saveProgress(this.progress);
+        this._updateTitle();
+      }).catch(() => {});
+    }
 
     this.renderer = new PaperRenderer($('#canvas-host'), {
       quality: this.settings.quality,
@@ -180,10 +192,19 @@ class App {
     $('#journey-summary').textContent = `${jp.done}/${jp.total} stages · ${jp.stars}★`;
     const info = dailyInfo(this.platform.now());
     $('#daily-summary').textContent = `Today ${info.date} · tier ${info.tier}`;
-    const guest = 'Guest ' + (this.progress.playerId || (this.progress.playerId = String(hashString(Math.random() + '').toString(16).slice(0, 6))));
-    saveProgress(this.progress);
-    $('#profile-line').textContent = this.platform.online
-      ? `Connected · playing as ${guest}` : `Local play · ${guest} (sign-in offered by host)`;
+    // Cloud mirror: every local progress write also queues a debounced PUT.
+    if (this.platform.hosted) this.platform.saveCloud({ progress: this.progress });
+    if (this.platform.hosted) {
+      const name = this.platform.profile ? this.platform.profile.name : '…';
+      const syncTxt = this.platform.sync === 'synced' ? 'progress synced'
+        : this.platform.sync === 'saving' ? 'saving…'
+        : 'cloud sync pending';
+      $('#profile-line').textContent = `Playing as ${name} · ${syncTxt}`;
+    } else {
+      const guest = 'Guest ' + (this.progress.playerId || (this.progress.playerId = String(hashString(Math.random() + '').toString(16).slice(0, 6))));
+      saveProgress(this.progress);
+      $('#profile-line').textContent = `Local play · ${guest}`;
+    }
     const unlocked = Object.keys(this.progress.achievements).length;
     $('#achievement-line').textContent = `Achievements: ${unlocked}/5 · Illustrations finished: ${this.progress.gamesPlayed}`;
   }
@@ -570,8 +591,12 @@ class App {
 
     let rankInfo = '';
     if (this.ranked && st.terminalReason === TERMINAL.COMPLETED) {
+      const displayName = this.platform.hosted && this.platform.profile
+        ? this.platform.profile.name
+        : 'Guest ' + (this.progress.playerId || 'anon');
       const entry = {
-        name: 'Guest ' + (this.progress.playerId || 'anon'),
+        name: displayName,
+        playerId: this.platform.hosted ? this.platform.userId : undefined,
         score: sc.total,
         elapsedMs: st.elapsedMs,
         invalid: st.invalid,
