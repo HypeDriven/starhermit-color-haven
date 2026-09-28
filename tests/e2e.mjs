@@ -119,7 +119,9 @@ async function newPass(viewport, hasTouch) {
   const context = await browser.newContext({ viewport, hasTouch });
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !browserNoise.test(m.text())) errors.push(`console: ${m.text()}`); });
+  page.on('console', (m) => {
+    if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text())) errors.push(`console ${m.type()}: ${m.text()}`);
+  });
   return { context, page, errors };
 }
 
@@ -436,12 +438,127 @@ async function runTutorialPass(label, viewport, hasTouch) {
   }
 }
 
+/**
+ * Settings → Graphics through the visible UI: open from the title card,
+ * switch presets (Low → Ultra → High), override one category, check the
+ * renderer applied it, reload and confirm it persisted, and check the panel
+ * fits the viewport. Zero console errors/warnings throughout.
+ */
+async function runGraphicsPass(label, viewport, hasTouch) {
+  const { context, page, errors } = await newPass(viewport, hasTouch);
+  const { step, screenShown, screenGone } = makeHelpers(page, label, hasTouch);
+  const gfxState = () => page.evaluate(() => {
+    const r = window.__colorhaven.renderer;
+    return {
+      body: document.body.dataset.gfxPreset, canvas: r.renderer.domElement.dataset.gfxPreset,
+      q: r.q, shadows: r.renderer.shadowMap.enabled, composer: !!r.composer,
+      summary: document.querySelector('#gfx-summary').textContent,
+      saved: JSON.parse(localStorage.getItem('colorhaven.settings.v1') || '{}').gfx,
+    };
+  });
+  const openGraphics = async () => {
+    await page.click('#btn-title-settings');
+    await screenShown('settings');
+    await page.locator('#gfx-fieldset').scrollIntoViewIfNeeded();
+  };
+  try {
+    await step('auto resolves to low on a software GPU', async () => {
+      await page.goto(BASE, { waitUntil: 'load' });
+      await page.waitForFunction(() => window.__colorhaven && window.__colorhaven.renderer, null, { timeout: 10000 });
+      await screenShown('title');
+      const g = await gfxState();
+      if (g.body !== 'low' || !g.q.auto) throw new Error('auto did not resolve to low: ' + JSON.stringify(g.q));
+      if (g.composer) throw new Error('low preset should not build a post chain');
+    });
+
+    await step('graphics panel opens from the title and fits the viewport', async () => {
+      await openGraphics();
+      const opts = await page.locator('#set-quality option').allTextContents();
+      if (!/auto/i.test(opts[0]) || opts.length !== 5) throw new Error('quality options: ' + opts.join('|'));
+      const cats = await page.locator('#gfx-fieldset select[id^="gfx-"]').count();
+      if (cats < 6) throw new Error('expected per-category selects, got ' + cats);
+      for (const id of ['#set-quality', '#gfx-scale', '#gfx-shadows', '#gfx-adaptive', '#gfx-fps', '#btn-settings-close']) {
+        await page.locator(id).scrollIntoViewIfNeeded();
+        const box = await page.locator(id).boundingBox();
+        if (!box || box.x < 0 || box.x + box.width > viewport.width + 1 || box.y < 0 || box.y + box.height > viewport.height + 1) {
+          throw new Error(`${id} not fully visible: ${JSON.stringify(box)}`);
+        }
+      }
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      if (overflow) throw new Error('horizontal page overflow with settings open');
+    });
+
+    await step('switch preset Low → Ultra → High applies live', async () => {
+      await page.selectOption('#set-quality', 'low');
+      let g = await gfxState();
+      if (g.body !== 'low' || g.q.auto || g.shadows) throw new Error('low not applied');
+      await page.selectOption('#set-quality', 'ultra');
+      await page.waitForTimeout(400); // a few frames through the full post chain
+      g = await gfxState();
+      if (g.canvas !== 'ultra' || !g.shadows || !g.composer) throw new Error('ultra not applied: ' + JSON.stringify(g));
+      await page.selectOption('#set-quality', 'high');
+      await page.waitForTimeout(200);
+      g = await gfxState();
+      if (g.body !== 'high' || g.q.antialias !== 'smaa' || !/2048² shadows/.test(g.summary)) throw new Error('high not applied: ' + g.summary);
+      await page.screenshot({ path: SHOT('graphics', label) });
+    });
+
+    await step('override one category, then a preset clears it', async () => {
+      const def = await page.locator('#gfx-shadows').inputValue();
+      if (def !== 'preset') throw new Error('category should default to "From preset"');
+      await page.selectOption('#gfx-shadows', 'off');
+      let g = await gfxState();
+      if (g.shadows || g.q.shadows !== 'off' || g.saved.shadows !== 'off') throw new Error('shadow override not applied');
+      await page.selectOption('#gfx-ambient', 'off');
+      g = await gfxState();
+      if (g.q.ambient !== 'off') throw new Error('ambient override not applied');
+    });
+
+    await step('settings survive a reload', async () => {
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForFunction(() => window.__colorhaven && window.__colorhaven.renderer, null, { timeout: 10000 });
+      await screenShown('title');
+      const g = await gfxState();
+      if (g.body !== 'high' || g.q.shadows !== 'off' || g.shadows) throw new Error('graphics settings not restored: ' + JSON.stringify(g.saved));
+      await openGraphics();
+      if (await page.locator('#set-quality').inputValue() !== 'high') throw new Error('panel lost the preset');
+      if (await page.locator('#gfx-shadows').inputValue() !== 'off') throw new Error('panel lost the override');
+      await page.selectOption('#set-quality', 'high'); // preset clears overrides
+      if (await page.locator('#gfx-shadows').inputValue() !== 'preset') throw new Error('preset did not clear overrides');
+      await page.click('#btn-settings-close');
+      await screenGone('settings');
+    });
+
+    await step('a round renders at High, then back to Auto', async () => {
+      await page.click('.mode-btn[data-mode="practice"]');
+      await screenShown('setup');
+      await page.click('#btn-setup-start');
+      await page.waitForFunction(() => window.__colorhaven.session && window.__colorhaven.session.state.status === 'active', null, { timeout: 8000 });
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: SHOT('graphics-play', label) });
+      await page.click('#btn-pause');
+      await screenShown('pause');
+      await page.click('#btn-pause-settings');
+      await screenShown('settings');
+      await page.selectOption('#set-quality', 'auto');
+      const g = await gfxState();
+      if (!g.q.auto || g.body !== 'low') throw new Error('auto not restored');
+      await page.click('#btn-settings-close');
+      await screenShown('pause');
+    });
+  } finally {
+    await finishPass(label, context, errors);
+  }
+}
+
 try {
+  await runGraphicsPass('gfx-desktop', { width: 1280, height: 800 }, false);
+  await runGraphicsPass('gfx-mobile', { width: 390, height: 844 }, true);
   await runPass('desktop', { width: 1280, height: 800 }, false);
   await runPass('mobile', { width: 390, height: 844 }, true);
   await runTutorialPass('learn', { width: 1280, height: 800 }, false);
   await runRankedPass('ranked', { width: 1280, height: 800 }, false);
-  console.log('\nE2E PASS — color-haven, desktop + mobile + learn + ranked, no page errors');
+  console.log('\nE2E PASS — color-haven, graphics + desktop + mobile + learn + ranked, no page errors');
 } finally {
   await browser.close();
   server.close();

@@ -8,7 +8,7 @@
 <meta name="description" content="Color Haven — a relaxing paint-by-numbers paper-art game.">
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">
-{ "imports": { "three": "./vendor/three.module.js" } }
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/three/addons/" } }
 </script>
 </head>
 <body>
@@ -108,6 +108,10 @@
         <button class="mode-btn" data-mode="challenge" type="button"><strong>Challenge</strong><span>Limits and targets</span></button>
         <button class="mode-btn" data-mode="score" type="button"><strong>Score chase</strong><span>Seeded leaderboards</span></button>
       </div>
+      <div class="row gap title-links">
+        <button id="btn-title-settings" type="button" class="ghost-btn">Settings</button>
+        <button id="btn-title-help" type="button" class="ghost-btn">Help</button>
+      </div>
       <p id="profile-line" class="muted small"></p>
       <p id="achievement-line" class="muted small"></p>
     </div>
@@ -179,14 +183,7 @@
           <label class="check"><input type="checkbox" id="set-captions"> Text cues for sounds</label>
         </fieldset>
         <fieldset>
-          <legend>Graphics</legend>
-          <label>Quality
-            <select id="set-quality">
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
+          <legend>Display</legend>
           <label class="check"><input type="checkbox" id="set-motion"> Reduce motion</label>
           <label class="check"><input type="checkbox" id="set-contrast"> High contrast</label>
         </fieldset>
@@ -198,6 +195,7 @@
           <label class="check"><input type="checkbox" id="set-haptics"> Haptics (vibration)</label>
           <button id="btn-replay-tutorial" type="button" class="ghost-btn">Replay tutorial</button>
         </fieldset>
+        <fieldset id="gfx-fieldset" class="gfx-fieldset"><legend>Graphics</legend></fieldset>
       </div>
       <div class="row gap"><button id="btn-settings-close" type="button" class="primary-btn">Done</button></div>
     </div>

@@ -1,12 +1,23 @@
 /**
  * Color Haven — render module (Three.js).
  * Layered paper-art board: instanced paper tiles, a canvas-drawn number
- * overlay, selection ring + hover ghost, pooled pigment-puff particles,
- * tiered quality, deterministic visual seed. No post-processing: hierarchy
- * comes from depth, rim light, and grounded markers.
+ * overlay, selection ring + hover ghost, pooled pigment-puff particles.
+ * Graphics settings (gfx.js) drive shadows, studio image-based lighting,
+ * paper detail, an optional post chain (GTAO → colour grade → SMAA/FXAA),
+ * ambient motion and adaptive resolution. No bloom: the art rules out glow.
  */
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { detectPreset, resolve, describe, pixelRatio, SHADOW_MAP, PARTICLE_POOL } from './gfx.js';
 
 /* Authored framing constants (no magic offsets scattered in code). */
 export const CAMERA = {
@@ -26,11 +37,109 @@ const TILE = {
   SELECT_LIFT: 0.06,
 };
 
-const QUALITY_TIERS = {
-  low:    { dpr: 1,   shadows: false, particles: 0,   envDetail: 0 },
-  medium: { dpr: 1.5, shadows: false, particles: 400, envDetail: 1 },
-  high:   { dpr: 2,   shadows: true,  particles: 1200, envDetail: 2 },
+// Warm paper grade + vignette, applied in display space (after OutputPass).
+// Adds a little contrast and saturation; never flattens pieces or numbers.
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uVignette: { value: 0.2 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uVignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 src = texture2D(tDiffuse, vUv);
+      vec3 c = clamp(src.rgb, 0.0, 1.0);
+      c = mix(c, c * c * (3.0 - 2.0 * c), 0.14);                 // gentle S-curve
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      c = mix(vec3(l), c, 1.07);                                  // a touch more saturation
+      c *= mix(vec3(0.98, 0.99, 1.02), vec3(1.02, 1.0, 0.975), smoothstep(0.25, 0.85, l)); // warm highs, cool lows
+      float d = length(vUv - 0.5);
+      c *= 1.0 - uVignette * smoothstep(0.4, 0.9, d);
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), src.a);
+    }`,
 };
+
+// GTAO that ignores cosmetic layers (number overlay, markers, particles, motes)
+// so ambient occlusion reads the paper geometry, not the flat overlay plane.
+class PaperGTAOPass extends GTAOPass {
+  overrideVisibility() {
+    super.overrideVisibility();
+    this.scene.traverse((o) => { if (o.userData.noAO) o.visible = false; });
+  }
+}
+
+/* Deterministic procedural textures (visual only; never touch game RNG). */
+function texRng(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+
+/** Cut-paper grain: near-white fibres + soft deckled edge (multiplies instance colour). */
+function paperCanvas(size = 128) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const r = texRng(0xC0101);
+  const img = ctx.createImageData(size, size);
+  for (let i = 0; i < size * size; i++) {
+    const x = i % size, y = (i / size) | 0;
+    const edge = Math.min(x, y, size - 1 - x, size - 1 - y) / size;
+    const v = 244 + r() * 11 - (edge < 0.05 ? (0.05 - edge) * 260 : 0);
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = Math.max(0, Math.min(255, v));
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  ctx.lineWidth = 0.7;
+  for (let k = 0; k < 40; k++) {
+    ctx.strokeStyle = r() < 0.5 ? 'rgba(255,255,255,0.55)' : 'rgba(150,135,115,0.16)';
+    const x = r() * size, y = r() * size, a = r() * Math.PI * 2, l = 4 + r() * 12;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + Math.cos(a + 0.6) * l * 0.5, y + Math.sin(a + 0.6) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l);
+    ctx.stroke();
+  }
+  return c;
+}
+
+/** Woven linen for the table (tiles seamlessly). */
+function linenCanvas(size = 128) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const r = texRng(0x11AE7);
+  ctx.fillStyle = '#f2f2f2';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < size; i += 2) {
+    ctx.fillStyle = `rgba(255,255,255,${0.25 + r() * 0.3})`; ctx.fillRect(0, i, size, 1);
+    ctx.fillStyle = `rgba(120,105,90,${0.05 + r() * 0.08})`; ctx.fillRect(i, 0, 1, size);
+  }
+  for (let k = 0; k < 400; k++) {
+    ctx.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.35)' : 'rgba(110,95,80,0.08)';
+    ctx.fillRect((r() * size) | 0, (r() * size) | 0, 1 + ((r() * 3) | 0), 1);
+  }
+  return c;
+}
+
+/** Soft wood grain for the frame slats. */
+function woodCanvas(w = 256, h = 64) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const r = texRng(0x3D0D);
+  ctx.fillStyle = '#ededed';
+  ctx.fillRect(0, 0, w, h);
+  for (let k = 0; k < 26; k++) {
+    const y0 = r() * h, amp = 1 + r() * 3, f = 0.01 + r() * 0.03;
+    ctx.strokeStyle = r() < 0.5 ? `rgba(90,70,50,${0.08 + r() * 0.1})` : `rgba(255,255,255,${0.25 + r() * 0.2})`;
+    ctx.lineWidth = 0.6 + r() * 1.4;
+    ctx.beginPath();
+    for (let x = 0; x <= w; x += 4) {
+      const y = y0 + Math.sin(x * f + k) * amp;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  return c;
+}
 
 function hexCss(hex) { return '#' + hex.toString(16).padStart(6, '0'); }
 
@@ -38,20 +147,7 @@ export class PaperRenderer {
   constructor(container, opts = {}) {
     this.container = container;
     this.reducedMotion = !!opts.reducedMotion;
-    this.quality = QUALITY_TIERS[opts.quality] || QUALITY_TIERS.medium;
-    this.qualityName = QUALITY_TIERS[opts.quality] ? opts.quality : 'medium';
-
-    this.renderer = new THREE.WebGLRenderer({ antialias: this.qualityName !== 'low', alpha: false });
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.quality.dpr));
-    if (this.quality.shadows) {
-      this.renderer.shadowMap.enabled = true;
-      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    }
-    container.appendChild(this.renderer.domElement);
-    this.renderer.domElement.style.display = 'block';
+    this.saved = opts.gfx || {};
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
@@ -65,13 +161,34 @@ export class PaperRenderer {
     this._cameraAnim = null;
     this._particles = null;
     this._board = null;      // per-level bundle
+    this._lastState = null;
     this._hoverCell = -1;
     this._focusCell = -1;    // keyboard focus marker
     this._clockLast = performance.now();
+    this._time = 0;
     this._running = false;
     this._disposed = false;
 
+    // Graphics state.
+    this.composer = null;
+    this.postKey = null;
+    this.postFailed = false;
+    this.pixelRatio = 0;
+    this.adaptiveScale = 1;
+    this._frames = [];
+    this._size = [0, 0];
+    this.fps = 0;
+    this._gfxListeners = [];
+
+    this.q = resolve(this.saved, 'low');
+    this._createRenderer(this.q.antialias === 'msaa' && !this.q.post);
+    this.gpu = this._readGpu();
+    const mobile = (window.matchMedia && matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+    this.detected = detectPreset(this.gpu, mobile);
+
     this._buildLights();
+    this.setGraphics(this.saved);
     this._onResize = this.resize.bind(this);
     window.addEventListener('resize', this._onResize);
     // The host box also changes without a window resize (coach banner space,
@@ -82,6 +199,40 @@ export class PaperRenderer {
     }
   }
 
+  /** (Re)create the WebGL renderer; canvas MSAA is a context-creation option. */
+  _createRenderer(msaa) {
+    const old = this.renderer;
+    this._msaa = !!msaa;
+    this.renderer = new THREE.WebGLRenderer({ antialias: this._msaa, alpha: false, powerPreference: 'high-performance' });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.domElement.style.display = 'block';
+    this.renderer.domElement.setAttribute('aria-hidden', 'true');
+    if (old) {
+      this.composer?.dispose();
+      this.composer = null;
+      this.postKey = null;
+      if (this._envRT) { this._envRT.dispose(); this._envRT = null; this.scene.environment = null; }
+      this.container.replaceChild(this.renderer.domElement, old.domElement);
+      old.dispose();
+    } else {
+      this.container.appendChild(this.renderer.domElement);
+    }
+    this.pixelRatio = 0; // force a resize on the next frame
+  }
+
+  _readGpu() {
+    try {
+      const gl = this.renderer.getContext();
+      // Firefox exposes the unmasked name as RENDERER (and warns on the extension).
+      if (/firefox/i.test(navigator.userAgent || '')) return String(gl.getParameter(gl.RENDERER) || '');
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)) || '';
+    } catch { return ''; }
+  }
+
   /* -------------------------------------------------------------- */
   /* Lighting: one dominant key, soft environment fill, grounding.   */
   /* -------------------------------------------------------------- */
@@ -90,16 +241,30 @@ export class PaperRenderer {
     this.scene.add(this.hemi);
     this.key = new THREE.DirectionalLight(0xfff1d6, 1.6);
     this.key.position.set(6, 12, 4);
-    this.key.castShadow = this.quality.shadows;
-    if (this.quality.shadows) {
-      this.key.shadow.mapSize.set(1024, 1024);
-      this.key.shadow.radius = 4;
-      this.key.shadow.bias = -0.0005;
-    }
+    this.key.shadow.bias = -0.0004;
+    this.key.shadow.normalBias = 0.02;
+    this.key.shadow.radius = 3;
     this.scene.add(this.key);
+    this.scene.add(this.key.target);
+    this._keyBase = new THREE.Vector3(6, 12, 4);
     this.rim = new THREE.DirectionalLight(0xdde8ff, 0.35);
     this.rim.position.set(-5, 6, -6);
     this.scene.add(this.rim);
+  }
+
+  /** Point the key light at the board and fit its shadow box tightly to it. */
+  _fitShadow() {
+    const b = this._board;
+    const w = b ? b.level.w : 8, h = b ? b.level.h : 8;
+    const half = Math.hypot(w + 1, h + 1) / 2 + 0.5;
+    const dir = new THREE.Vector3(0.55, 0.66, 0.42).normalize();
+    this._keyBase.copy(dir).multiplyScalar(half * 2 + 6);
+    this.key.position.copy(this._keyBase);
+    this.key.target.position.set(0, 0, 0);
+    this.key.target.updateMatrixWorld();
+    const cam = this.key.shadow.camera;
+    Object.assign(cam, { left: -half, right: half, top: half, bottom: -half, near: 0.5, far: half * 4 + 12 });
+    cam.updateProjectionMatrix();
   }
 
   /* -------------------------------------------------------------- */
@@ -118,23 +283,30 @@ export class PaperRenderer {
     // Environment: table + backdrop (env layer).
     this.scene.background = new THREE.Color(theme.bg);
     this.key.color.set(theme.light);
+    const detailed = this.q.detail === 'detailed';
+    const ptex = this._textures(detailed);
     const table = new THREE.Mesh(
       new THREE.PlaneGeometry(120, 120),
-      new THREE.MeshStandardMaterial({ color: theme.table, roughness: 0.95, metalness: 0 })
+      new THREE.MeshStandardMaterial({ color: theme.table, roughness: 0.95, metalness: 0, map: ptex.linen, envMapIntensity: 0.15 })
     );
     table.rotation.x = -Math.PI / 2;
     table.position.y = -0.28;
-    table.receiveShadow = this.quality.shadows;
+    table.receiveShadow = true;
     table.layers.set(0);
     g.add(table);
 
     // Frame: four paper slats around the board.
-    const frameMat = new THREE.MeshStandardMaterial({ color: theme.frame, roughness: 0.8 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: theme.frame, roughness: detailed ? 0.62 : 0.8, map: ptex.wood, envMapIntensity: 0.6 });
     const fw = w + 0.6, fh = h + 0.6, ft = 0.34;
     const mkSlat = (sw, sh, x, z) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(sw, ft, sh), frameMat);
+      // Build each slat long along x and turn the vertical ones, so wood grain follows the slat.
+      const turn = sh > sw;
+      const L = turn ? sh : sw, D = turn ? sw : sh;
+      const m = new THREE.Mesh(detailed ? new RoundedBoxGeometry(L, ft, D, 2, 0.05) : new THREE.BoxGeometry(L, ft, D), frameMat);
+      if (turn) m.rotation.y = Math.PI / 2;
       m.position.set(x, -ft / 2 + 0.02, z);
-      m.receiveShadow = this.quality.shadows;
+      m.castShadow = true;
+      m.receiveShadow = true;
       m.layers.set(0);
       g.add(m);
     };
@@ -143,11 +315,14 @@ export class PaperRenderer {
 
     // Paper tiles: one InstancedMesh; per-instance color + matrix.
     const size = 1 - TILE.GAP;
-    const geo = new THREE.BoxGeometry(size, TILE.HEIGHT, size);
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0 });
+    const geo = detailed ? new RoundedBoxGeometry(size, TILE.HEIGHT, size, 2, 0.035) : new THREE.BoxGeometry(size, TILE.HEIGHT, size);
+    const mat = new THREE.MeshStandardMaterial({
+      roughness: 0.9, metalness: 0, envMapIntensity: 0.3,
+      map: ptex.paper, bumpMap: detailed ? ptex.paper : null, bumpScale: detailed ? 1.2 : 0,
+    });
     const tiles = new THREE.InstancedMesh(geo, mat, n);
-    tiles.castShadow = this.quality.shadows;
-    tiles.receiveShadow = this.quality.shadows;
+    tiles.castShadow = true;
+    tiles.receiveShadow = true;
     tiles.layers.set(1);
     tiles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     g.add(tiles);
@@ -179,6 +354,18 @@ export class PaperRenderer {
     overlay.position.y = maxLayer + TILE.HEIGHT / 2 + TILE.FILL_LIFT + 0.02;
     overlay.layers.set(1);
     overlay.renderOrder = 2;
+    overlay.userData.noAO = true;
+    // The post chain blends in linear light, which thins anti-aliased dark
+    // glyphs. Re-weight dark texels' coverage so numbers keep the weight they
+    // have when blended on the canvas (a' = 1 − (1 − a)^2.2 for dark ink).
+    const linBlend = { value: 0 };
+    overlay.material.userData.linBlend = linBlend;
+    overlay.material.onBeforeCompile = (shader) => {
+      shader.uniforms.uLinBlend = linBlend;
+      shader.fragmentShader = 'uniform float uLinBlend;\n' + shader.fragmentShader.replace('#include <map_fragment>',
+        '#include <map_fragment>\n  float inkLum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));\n' +
+        '  diffuseColor.a = mix(diffuseColor.a, 1.0 - pow(1.0 - diffuseColor.a, 2.2), uLinBlend * (1.0 - clamp(inkLum * 2.0, 0.0, 1.0)));');
+    };
     g.add(overlay);
 
     // Invisible pick plane (only raycast target — cosmetic layers never pick).
@@ -199,6 +386,16 @@ export class PaperRenderer {
     ring.visible = false;
     ring.layers.set(2);
     ring.renderOrder = 3;
+    ring.userData.noAO = true;
+    // Thin ink edges keep the ring readable over a tile of its own colour.
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0x3d332a, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
+    for (const [r0, r1] of [[0.55, 0.59], [0.38, 0.42]]) {
+      const edge = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 32), edgeMat);
+      edge.layers.set(2);
+      edge.renderOrder = 3;
+      edge.userData.noAO = true;
+      ring.add(edge);
+    }
     g.add(ring);
     const ghost = new THREE.Mesh(
       new THREE.PlaneGeometry(size, size),
@@ -208,10 +405,11 @@ export class PaperRenderer {
     ghost.visible = false;
     ghost.layers.set(2);
     ghost.renderOrder = 3;
+    ghost.userData.noAO = true;
     g.add(ghost);
 
     // Pooled pigment puffs (effects layer, never raycastable).
-    const pCount = this.quality.particles;
+    const pCount = PARTICLE_POOL[this.q.particles] || 0;
     let particles = null;
     if (pCount > 0) {
       const pGeo = new THREE.PlaneGeometry(0.12, 0.12);
@@ -224,12 +422,19 @@ export class PaperRenderer {
       particles.mesh.layers.set(3);
       particles.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       particles.mesh.frustumCulled = false;
+      particles.mesh.userData.noAO = true;
       const zero = new THREE.Matrix4().makeScale(0, 0, 0);
       for (let i = 0; i < pCount; i++) particles.mesh.setMatrixAt(i, zero);
       g.add(particles.mesh);
     }
 
-    this._board = { group: g, level, palette, theme, tiles, canvas, tex, overlay, pick, ring, ghost, particles, cellColor: new THREE.Color(), tmpM: new THREE.Matrix4() };
+    // Ambient dust motes drifting in the sunlight (effects layer; points skip AO).
+    const motes = this._buildMotes(w, h, maxLayer);
+    g.add(motes);
+
+    this._board = { group: g, level, palette, theme, tiles, canvas, tex, overlay, pick, ring, ghost, particles, motes, mats: [table.material, frameMat, mat], cellColor: new THREE.Color(), tmpM: new THREE.Matrix4() };
+    this._fitShadow();
+    this._applyAmbient();
     this._hoverCell = -1;
     this._focusCell = -1;
     this._anims.length = 0;
@@ -238,6 +443,46 @@ export class PaperRenderer {
     this.resize();
     // Prewarm shader variants before play starts.
     this.renderer.compile(this.scene, this.camera);
+  }
+
+  /** Shared procedural textures (plain: none). Kept across board rebuilds. */
+  _textures(detailed) {
+    if (!detailed) return { paper: null, linen: null, wood: null };
+    if (!this._tex) {
+      const mk = (canvas, repeat) => {
+        const t = new THREE.CanvasTexture(canvas);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        if (repeat) t.repeat.set(repeat[0], repeat[1]);
+        t.anisotropy = 4;
+        t.userData.shared = true;
+        return t;
+      };
+      this._tex = { paper: mk(paperCanvas()), linen: mk(linenCanvas(), [48, 48]), wood: mk(woodCanvas(), [1, 1]) };
+    }
+    return this._tex;
+  }
+
+  _buildMotes(w, h, top) {
+    const count = 36;
+    const r = texRng(w * 131 + h);
+    const pos = new Float32Array(count * 3);
+    const seeds = [];
+    for (let i = 0; i < count; i++) {
+      const s = { x: (r() - 0.5) * (w + 2), y: top + 0.4 + r() * 3.5, z: (r() - 0.5) * (h + 2), p: r() * Math.PI * 2, v: 0.06 + r() * 0.1 };
+      seeds.push(s);
+      pos[i * 3] = s.x; pos[i * 3 + 1] = s.y; pos[i * 3 + 2] = s.z;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({ color: 0xfff4dc, size: 2.5, sizeAttenuation: false, transparent: true, opacity: 0.3, depthWrite: false });
+    const pts = new THREE.Points(geo, mat);
+    pts.layers.set(3);
+    pts.frustumCulled = false;
+    pts.userData.noAO = true;
+    pts.userData.seeds = seeds;
+    pts.userData.span = [w + 2, h + 2, top];
+    return pts;
   }
 
   _cellXY(i, w) { return { x: i % w, y: Math.floor(i / w) }; }
@@ -297,7 +542,7 @@ export class PaperRenderer {
     if (this._disposed) return;
     const cw = this.container.clientWidth || 1;
     const ch = this.container.clientHeight || 1;
-    this.renderer.setSize(cw, ch, false);
+    this._applySize(cw, ch);
     const b = this._board;
     const span = b ? (Math.max(b.level.w, b.level.h) / 2) * CAMERA.VIEW_MARGIN : 5;
     const aspect = cw / ch;
@@ -342,6 +587,7 @@ export class PaperRenderer {
   syncState(state, events = []) {
     const b = this._board;
     if (!b) return;
+    this._lastState = state;
     const { level, palette, tiles } = b;
     const color = b.cellColor;
     const paper = new THREE.Color(b.theme.paper);
@@ -576,7 +822,226 @@ export class PaperRenderer {
       });
     }
     this._stepParticles(dt);
-    this.renderer.render(this.scene, this.camera);
+    this._stepAmbient(dt);
+    const rescale = this._adapt(dt * 1000);
+    if (rescale) this.resize();
+    const key = this._postKey();
+    if (key !== this.postKey) {
+      this.postKey = key;
+      this._buildPost();
+    }
+    if (this._board) this._board.overlay.material.userData.linBlend.value = this.composer ? 1 : 0;
+    if (this.composer) this.composer.render(dt);
+    else this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Canvas size × (dpr cap · preset scale · render scale · adaptive scale). */
+  _applySize(cw, ch) {
+    const ratio = pixelRatio(this.q, window.devicePixelRatio || 1, this.adaptiveScale);
+    if (cw === this._size[0] && ch === this._size[1] && ratio === this.pixelRatio) return;
+    this._size = [cw, ch];
+    this.pixelRatio = ratio;
+    this.renderer.setPixelRatio(ratio);
+    this.renderer.setSize(cw, ch, false);
+    if (this.composer) {
+      this.composer.setPixelRatio(ratio);
+      this.composer.setSize(cw, ch);
+      if (this._fxaa) this._fxaa.material.uniforms.resolution.value.set(1 / (cw * ratio), 1 / (ch * ratio));
+    }
+  }
+
+  /** Ambient motion: drifting dust motes + a slow sunlight drift (off with reduced motion). */
+  _applyAmbient() {
+    const osReduce = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const on = this.q.ambient === 'on' && !this.reducedMotion && !osReduce;
+    this._ambientOn = on;
+    if (this._board && this._board.motes) this._board.motes.visible = on;
+    if (!on) { this.key.position.copy(this._keyBase); this.key.intensity = 1.6; }
+  }
+
+  _stepAmbient(dt) {
+    if (!this._ambientOn) return;
+    this._time += dt;
+    const t = this._time;
+    // Sunlight through a window: the key drifts a little and breathes in strength.
+    this.key.position.set(
+      this._keyBase.x + Math.sin(t * 0.07) * 1.2,
+      this._keyBase.y,
+      this._keyBase.z + Math.cos(t * 0.05) * 0.9);
+    this.key.intensity = 1.6 + Math.sin(t * 0.31) * 0.04 + Math.sin(t * 0.83) * 0.02;
+    const m = this._board && this._board.motes;
+    if (!m) return;
+    const pos = m.geometry.attributes.position;
+    const [sw, sh, top] = m.userData.span;
+    m.userData.seeds.forEach((s, i) => {
+      s.y += s.v * dt * 0.35;
+      s.x += Math.sin(t * 0.4 + s.p) * 0.12 * dt;
+      s.z += Math.cos(t * 0.3 + s.p) * 0.1 * dt;
+      if (s.y > top + 4) s.y = top + 0.3;
+      if (s.x > sw / 2) s.x -= sw; else if (s.x < -sw / 2) s.x += sw;
+      if (s.z > sh / 2) s.z -= sh; else if (s.z < -sh / 2) s.z += sh;
+      pos.setXYZ(i, s.x, s.y, s.z);
+    });
+    pos.needsUpdate = true;
+    m.material.opacity = 0.26 + Math.sin(t * 0.5) * 0.06;
+  }
+
+  /* -------------------------------------------------------------- */
+  /* Graphics settings                                               */
+  /* -------------------------------------------------------------- */
+
+  /** Apply saved graphics settings live (settings.gfx; `{}` = Auto). */
+  setGraphics(saved) {
+    this.saved = saved || {};
+    const prev = this.q;
+    const g = resolve(this.saved, this.detected);
+    this.q = g;
+    const wantMsaa = g.antialias === 'msaa' && !g.post;
+    if (wantMsaa !== this._msaa) this._createRenderer(wantMsaa);
+
+    const size = SHADOW_MAP[g.shadows];
+    this.renderer.shadowMap.enabled = size > 0;
+    this.key.castShadow = size > 0;
+    if (size > 0 && this.key.shadow.mapSize.x !== size) {
+      this.key.shadow.mapSize.set(size, size);
+      if (this.key.shadow.map) { this.key.shadow.map.dispose(); this.key.shadow.map = null; }
+    }
+    this.key.shadow.radius = g.shadows === 'high' ? 4 : 3;
+
+    // Studio lighting: image-based room light from RoomEnvironment (PMREM).
+    if (g.lighting === 'studio') {
+      if (!this._envRT) {
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        const room = new RoomEnvironment(this.renderer);
+        this._envRT = pmrem.fromScene(room, 0.04);
+        room.dispose();
+        pmrem.dispose();
+      }
+      this.scene.environment = this._envRT.texture;
+      this.hemi.intensity = 0.3;
+      this.renderer.toneMappingExposure = 0.92;
+    } else {
+      this.scene.environment = null;
+      this.hemi.intensity = 0.75;
+      this.renderer.toneMappingExposure = 1.05;
+    }
+
+    this.adaptiveScale = 1;
+    this._frames = [];
+    this.postKey = null; // rebuild the post chain on the next frame
+    this._fpsVisible(g.showFps);
+    this._applyAmbient();
+    const rebuild = this._board && prev && (prev.detail !== g.detail || prev.particles !== g.particles);
+    if (rebuild) {
+      const b = this._board;
+      const focus = this._focusCell;
+      this.buildBoard(b.level, b.palette, b.theme);
+      if (focus >= 0) this.setFocusCell(focus);
+      if (this._lastState) this.syncState(this._lastState, []);
+    } else if (this._board) {
+      // Materials pick up shadow-map changes on recompile.
+      for (const m of this._board.mats) m.needsUpdate = true;
+    }
+    this.pixelRatio = 0;
+    this.resize();
+    const el = this.renderer.domElement;
+    el.dataset.gfxPreset = g.preset;
+    document.body.dataset.gfxPreset = g.preset;
+    for (const fn of this._gfxListeners) fn();
+  }
+
+  /** Called whenever graphics info changes (summary line in the panel). */
+  onGraphicsChange(fn) { this._gfxListeners.push(fn); }
+
+  /** What the Graphics panel shows: GPU, auto choice, resolved tiers, cost, frame rate. */
+  graphicsInfo(phrases) {
+    const px = [Math.round(this._size[0] * this.pixelRatio), Math.round(this._size[1] * this.pixelRatio)];
+    return {
+      gpu: this.gpu || '',
+      detected: this.detected,
+      resolved: this.q,
+      summary: describe(this.q, px, phrases),
+      pixels: px,
+      fps: Math.round(this.fps || 0),
+      adaptiveScale: Math.round(this.adaptiveScale * 100) / 100,
+      postFailed: !!this.postFailed,
+    };
+  }
+
+  _fpsVisible(on) {
+    let el = document.getElementById('fps-meter');
+    if (on && !el) {
+      el = document.createElement('div');
+      el.id = 'fps-meter';
+      el.className = 'fps-meter';
+      el.setAttribute('aria-hidden', 'true');
+      el.textContent = '… fps';
+      document.body.append(el);
+    }
+    if (el) el.hidden = !on;
+  }
+
+  _postKey() {
+    const g = this.q;
+    return g.post && !this.postFailed ? [g.ao, g.grade, g.antialias].join('|') : 'none';
+  }
+
+  _buildPost() {
+    const g = this.q;
+    if (this.composer) { this.composer.dispose(); this.composer = null; }
+    this._fxaa = null;
+    if (!g.post || this.postFailed) return;
+    const [w, h] = this._size;
+    const pr = this.pixelRatio || 1;
+    try {
+      const target = new THREE.WebGLRenderTarget(Math.max(1, w * pr), Math.max(1, h * pr), {
+        type: THREE.HalfFloatType, samples: g.antialias === 'msaa' ? 4 : 0,
+      });
+      const composer = new EffectComposer(this.renderer, target);
+      composer.setPixelRatio(pr);
+      composer.setSize(w, h);
+      composer.addPass(new RenderPass(this.scene, this.camera));
+      if (g.ao !== 'off') {
+        const ao = new PaperGTAOPass(this.scene, this.camera, w * pr, h * pr);
+        ao.output = GTAOPass.OUTPUT.Default;
+        ao.blendIntensity = g.ao === 'high' ? 0.85 : 0.7;
+        ao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 0.6, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
+        ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === 'high' ? 6 : 4, rings: 2, samples: g.ao === 'high' ? 16 : 8 });
+        composer.addPass(ao);
+      }
+      composer.addPass(new OutputPass());
+      if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
+      if (g.antialias === 'smaa') composer.addPass(new SMAAPass(w * pr, h * pr));
+      if (g.antialias === 'fxaa') {
+        const fxaa = new ShaderPass(FXAAShader);
+        fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
+        composer.addPass(fxaa);
+        this._fxaa = fxaa;
+      }
+      this.composer = composer;
+    } catch {
+      // Post-processing is an enhancement: render directly and say so in the panel.
+      this.postFailed = true;
+      this.composer = null;
+      for (const fn of this._gfxListeners) fn();
+    }
+  }
+
+  /** Adaptive resolution: ~90-frame average; >26 ms steps down 0.1 (min 0.6), <14 ms back up 0.05. */
+  _adapt(ms) {
+    const f = this._frames;
+    f.push(ms);
+    if (f.length < 90) return false;
+    const avg = f.reduce((a, b) => a + b, 0) / f.length;
+    f.length = 0;
+    this.fps = 1000 / avg;
+    const el = document.getElementById('fps-meter');
+    if (el && !el.hidden) el.textContent = `${Math.round(this.fps)} fps · ${Math.round(this.pixelRatio * 100) / 100}×`;
+    if (!this.q.adaptive) return false;
+    const before = this.adaptiveScale;
+    if (avg > 26) this.adaptiveScale = Math.max(0.6, Math.round((this.adaptiveScale - 0.1) * 100) / 100);
+    else if (avg < 14 && this.adaptiveScale < 1) this.adaptiveScale = Math.min(1, Math.round((this.adaptiveScale + 0.05) * 100) / 100);
+    return before !== this.adaptiveScale;
   }
 
   _stepParticles(dt) {
@@ -604,19 +1069,10 @@ export class PaperRenderer {
   /* Quality / motion / disposal                                     */
   /* -------------------------------------------------------------- */
 
-  setQuality(name) {
-    if (!QUALITY_TIERS[name] || name === this.qualityName) return;
-    this.qualityName = name;
-    this.quality = QUALITY_TIERS[name];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.quality.dpr));
-    this.renderer.shadowMap.enabled = this.quality.shadows;
-    this.key.castShadow = this.quality.shadows;
-    if (this._board) this.buildBoard(this._board.level, this._board.palette, this._board.theme);
-  }
-
   setReducedMotion(on) {
     this.reducedMotion = !!on;
     if (on) { this._anims.length = 0; this._cameraAnim = null; }
+    this._applyAmbient();
   }
 
   _disposeBoard() {
@@ -626,7 +1082,7 @@ export class PaperRenderer {
       if (obj.geometry) obj.geometry.dispose();
       if (obj.material) {
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const m of mats) { if (m.map) m.map.dispose(); m.dispose(); }
+        for (const m of mats) { if (m.map && !m.map.userData.shared) m.map.dispose(); m.dispose(); }
       }
     });
     this.scene.remove(g);
@@ -638,6 +1094,9 @@ export class PaperRenderer {
     this.stop();
     window.removeEventListener('resize', this._onResize);
     this._disposeBoard();
+    if (this.composer) this.composer.dispose();
+    if (this._envRT) this._envRT.dispose();
+    if (this._tex) for (const t of Object.values(this._tex)) t.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);

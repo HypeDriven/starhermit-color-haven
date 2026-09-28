@@ -3,7 +3,7 @@
 **Status:** shipped; this document describes the game as it runs today.
 **Pitch:** a paint-by-numbers paper-art game — pick a numbered colour, fill every region that carries that number, and finish a layered paper illustration. No timer, no way to lose.
 **Genre:** relaxation / colouring puzzle. **Players:** 1 (asynchronous leaderboards). **Session:** 2–15 min per piece (tier-dependent; a Sprout board is ~2 min, an Elder board ~8 min at par).
-**Platforms:** desktop and mobile browsers with WebGL. **Rendering:** Three.js orthographic paper board (instanced tiles) under a semantic HTML shell.
+**Platforms:** desktop and mobile browsers with WebGL. **Rendering:** Three.js orthographic paper board (instanced tiles) under a semantic HTML shell, with graphics quality presets and an optional post-processing chain.
 
 ## 1. Overview and file map
 
@@ -15,15 +15,19 @@
 | `js/rules.js` | Pure rules engine: `createGame`, `applyCommand`, `listLegalActions`, `explainFill`, `score`, `hashState`, `replay`, `compareResults`, seeded RNG. |
 | `js/content.js` | Themes, palettes, tiers, five procedural illustration generators, `generateLevel`, `validateLevel`, journey (40 stages), daily, tutorial lessons, achievements. |
 | `js/session.js` | `GameSession`: command ids, elapsed-time deltas, pause, hash trail, replay envelope, snapshot/restore. |
-| `js/render.js` | `PaperRenderer`: Three.js scene, camera framing, picking, number overlay, tile/undo/invalid/celebrate animations, quality tiers. |
+| `js/render.js` | `PaperRenderer`: Three.js scene, camera framing, picking, number overlay, tile/undo/invalid/celebrate animations, graphics settings (`setGraphics`, `graphicsInfo`, post chain, adaptive resolution, ambient motion). |
+| `js/gfx.js` | Pure graphics quality model: presets, categories, `detectPreset`, `resolve`, `presetTier`, `choosePreset`, `pixelRatio`, `describe`. |
+| `js/gfx-ui.js` | Settings → Graphics panel (built into `#gfx-fieldset`), its nine-locale string table, `pickLocale`. |
+| `js/title-fx.js` | `TitlePetals`: drifting cut-paper petals behind the title card (2D canvas). |
 | `js/ui.js` | DOM helpers, screen stack, settings/progress stores, palette tray, HUD, results/journey/help/leaderboard rendering, achievements. |
 | `js/audio.js` | `AudioEngine`: four buses, authored Opus one-shots with synth fallbacks, studio ambience loop, adaptive pentatonic pad. |
 | `js/platform.js` | StarHermit adapter: fragment launch token + Bearer + 45-min refresh, profile nickname, cloud-save slot (zip+base64, remote-preferred, debounced, sync status), `/api/v1/time` probe, local saves/boards, no-op activity/telemetry. |
 | `server.js` | Authoritative game script: static files, server time, replay-validated leaderboards, peer-scoped saves. |
 | `sfx/` | 16 Opus clips, `manifest.txt` (canonical), `manifest.json` (generator input), `manifest.md`. |
 | `assets/` | `title-backdrop.webp`, `results-studio.webp` (FLUX.2 key art). `coverart.png` at the root is the store cover. |
-| `tests/` | `rules.test.mjs` (npm test), `e2e.mjs` (Playwright, real UI), `server.smoke.mjs` (HTTP). |
-| `vendor/three.module.js` | Three.js (import-mapped as `three`). |
+| `tests/` | `rules.test.mjs` + `gfx.test.mjs` (npm test), `e2e.mjs` (Playwright, real UI), `server.smoke.mjs` (HTTP). |
+| `vendor/three.module.js` | Three.js r160 (import-mapped as `three`). |
+| `vendor/three/addons/` | r160 addons (import-mapped as `three/addons/`): EffectComposer, RenderPass, ShaderPass, OutputPass, GTAOPass, SMAAPass, FXAAShader and their shaders, RoomEnvironment, RoundedBoxGeometry. |
 | `starhermit.txt` | `name=Color Haven`, `launch=index.html`, `server=server.js`, `cover=coverart.png`. |
 
 ## 2. Vision and design pillars
@@ -121,7 +125,7 @@ boot ─► title ─┬─ Continue ──────────────�
                ├─ Learn ─► lesson 1 → 2 → 3 → title
                ├─ Journey ─► map ─► stage ─► results ─► next stage
                ├─ Daily / Practice / Challenge / Score ─► setup ─► round
-               └─ Help · Settings (also from topbar and pause)
+               └─ Help · Settings (title-card buttons; also from topbar and pause)
 round ─► pause (Resume · Settings · Help · Leave) ─► title (snapshot kept)
 round ─► results (Next · Replay · Leaderboard* · Home)      *ranked only
 ```
@@ -140,7 +144,9 @@ Safe areas: `#app` pads with `env(safe-area-inset-*)`; the tray adds the bottom 
 
 **Typography.** `system-ui` stack, 16 px base (`--font-scale` 1.2 with Larger text), uppercase 0.95 rem card headings with 0.06 em tracking, tabular numerals for stats. Region numbers are drawn on a canvas overlay at 42 % of the cell (weight 600) with the symbol at 22 % below.
 
-**Motion.** Fill: 260 ms ease-out drop from +0.35 units with 10 pigment puffs. Undo: 4 puffs. Invalid: 300 ms ×-axis wobble. Complete: 6 bursts of 24 puffs. Camera re-frame: 900 ms ease-out cubic, interruptible. Reduced motion (setting or body class) skips all tile tweens, puffs and camera eases, shortens the results delay to 200 ms, and zeroes CSS transitions. Quality tiers: low (DPR 1, no AA, no particles), medium (DPR 1.5, 400 particles), high (DPR 2, shadows, 1200 particles).
+**Motion.** Fill: 260 ms ease-out drop from +0.35 units with 10 pigment puffs. Undo: 4 puffs. Invalid: 300 ms ×-axis wobble. Complete: 6 bursts of 24 puffs. Camera re-frame: 900 ms ease-out cubic, interruptible. Ambient motion (Graphics → Ambient motion): ~36 dust motes drift upward through the light above the board, the key light drifts slowly and breathes ±4 % like sunlight through a window, and cut-paper petals fall behind the title card. Reduced motion (setting, body class, or the OS `prefers-reduced-motion`) skips all tile tweens, puffs, camera eases and ambient motion, shortens the results delay to 200 ms, and zeroes CSS transitions.
+
+**Graphics.** Lighting is ACES-filmic tone mapped with sRGB output: a hemisphere fill, a warm key directional light whose PCF-soft shadow box is fitted to the board (half-extent = half the framed board diagonal + 0.5; normal bias 0.02) and a cool rim light. Optional effects: key-light shadows (1024/2048/4096 maps), studio image-based lighting (`RoomEnvironment` through `PMREMGenerator` as `scene.environment`, hemisphere dimmed to 0.3, exposure 0.92, envMapIntensity 0.3 on paper, 0.6 on the frame, 0.15 on the table), paper detail (rounded bevelled tiles and frame slats, a procedural cut-paper grain with deckled edges used as colour and bump map, woven-linen table and wood-grain frame textures), GTAO contact darkening between paper layers (radius 0.45; cosmetic layers — number overlay, ring, ghost, particles, motes — are hidden from its depth/normal pass), a warm paper colour grade with gentle S-curve, +7 % saturation and a 0.2 vignette (display space, after `OutputPass`), FXAA/SMAA/MSAA anti-aliasing, the pigment-puff pool size and ambient motion. There is no bloom: pillar 1 rules out glow. Under the post chain the number overlay re-weights the coverage of dark ink (a′ = 1 − (1 − a)^2.2) so numbers keep their weight despite linear-light blending, and the keyboard focus ring carries thin ink edges so it stays visible over a tile of its own colour. **Settings → Graphics** offers a quality preset (Auto — chosen from the WEBGL_debug_renderer_info GPU string: software renderers get Low, discrete GPUs and Apple M get High, others Balanced, touch-only devices capped at Balanced; Low; Balanced; High; Ultra), a render scale (50–200 % of the preset's), a per-category override select for Shadows (off/low/medium/high), Ambient occlusion (off/on/high), Color grade (off/on), Anti-aliasing (off/FXAA/SMAA/MSAA), Lighting (basic/studio), Paper detail (plain/detailed), Pigment particles (off/400/1200) and Ambient motion (off/on) — each defaulting to "From preset (…)"; choosing a preset clears overrides — plus Adaptive resolution (default on: a 90-frame average above 26 ms steps the scale down 0.1 to a 0.6 floor, below 14 ms steps back up 0.05) and Show frame rate (bottom-left `#fps-meter`). A summary line reads "GPU · cost summary · W×H px", and a note appears if the post chain cannot be built (the board then renders directly). Presets: Low = DPR cap 1, nothing optional (as cheap as the original low tier, no post chain); Balanced = DPR 1.5, 1024² shadows, grade, FXAA, studio, detail, 400 puffs, ambient; High = DPR 2, 2048² shadows, GTAO, grade, SMAA, studio, detail, 1200 puffs, ambient; Ultra = DPR 2 × 1.25, 4096² shadows, high GTAO, MSAA inside the post target. Pixel ratio = min(DPR, preset cap) × preset scale × render scale × adaptive scale (clamped 0.5–3). Every change applies live: shadow maps and materials recompile, the post chain rebuilds when its categories change, detail/particle changes rebuild the board and re-sync the state, and plain MSAA without post recreates the WebGL canvas. The composer only runs when the chain is non-empty. The resolved preset is mirrored on `body[data-gfx-preset]` and the canvas.
 
 **Visual assets the design calls for:** store cover (`coverart.png`, paper-cut sunrise with title), title backdrop (`assets/title-backdrop.webp`, calm paper hills with petals under a cream wash), results illustration (`assets/results-studio.webp`, a finished paper garden with pigment jars and confetti, shown only on completion), favicon/icon (paper palette mark). No 3D model is called for: the board is procedural.
 
@@ -171,12 +177,12 @@ Safe areas: `#app` pads with `env(safe-area-inset-*)`; the tray adds the bottom 
 
 ## 10. Localization
 
-**Shipping languages today:** en-US only. All player-facing strings are literals in `index.html`, `js/ui.js`, `js/main.js` and `js/content.js`; there is no string table and no locale selection. The product requirement is en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT; see *Design intent not yet implemented*. Layout already tolerates ~30 % expansion: cards wrap, the topbar status ellipsises, the tray scrolls horizontally, tutorial banners cap at 34 rem and wrap.
+**Shipping languages today:** en-US, except the Settings → Graphics panel, which is localized in en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT (`js/gfx-ui.js`, locale from `navigator.language`). All other player-facing strings are literals in `index.html`, `js/ui.js`, `js/main.js` and `js/content.js`; there is no game-wide string table and no locale selection. The product requirement is en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT; see *Design intent not yet implemented*. Layout already tolerates ~30 % expansion: cards wrap, the topbar status ellipsises, the tray scrolls horizontally, tutorial banners cap at 34 rem and wrap.
 
 ## 11. Accessibility
 
 - **Keyboard-only path:** skip link → board (`#canvas-host`, `role=application`, `tabindex=0`); arrows/Enter/1–8/U/H/C/P cover every play action; all overlays are buttons/inputs; the tutorial banner becomes a `role=button` with Enter/Space when it waits for acknowledgement (`_setBannerAction`). `showScreen` focuses the first control; `closeScreen` restores the previous focus. Esc closes any overlay.
-- **Focus visibility:** 3 px `#2f6fd0` outline on every focusable; the board focus ring is a white/selected-colour torus on the focused tile.
+- **Focus visibility:** 3 px `#2f6fd0` outline on every focusable; the board focus ring is a white/selected-colour torus with thin ink edges on the focused tile.
 - **Announcements:** polite region for selection, focus moves, round start/resume, captions; assertive region for wrong colour, completion, out of moves. Progress bar carries `aria-valuenow`; tray buttons carry name, colour and remaining count.
 - **Colour independence:** number + symbol on every region and tray button; CVD-safe palette; high-contrast theme.
 - **Reduced motion:** setting (also body class) removes tweens, particles, camera eases and CSS transitions.
@@ -201,16 +207,18 @@ Per https://wiki.starhermit.com/ conventions the game ships `starhermit.txt` (`n
 ## 13. Technical architecture
 
 - **Determinism:** rules and content are DOM-free ES modules shared by browser, `server.js` and tests. Commands carry ids and elapsed deltas; `GameSession` keeps a hash trail every 10 ticks and builds the replay envelope (`schemaV 1`, content/level/seed/tier/mode, mechanics, commands, hashes, result, checksum). The server regenerates the level (daily: from the date in the board id, ignoring client tier/mechanics), replays, and requires `score.total` and `completed` to match.
-- **Persistence (localStorage):** `colorhaven.settings.v1`, `colorhaven.progress.v2`, `colorhaven.snapshot.v2` (autosaved after every state change, cleared on completion; restored by **Continue**), `colorhaven.board.<id>`.
-- **Rendering:** one `InstancedMesh` for tiles, one canvas-texture overlay for numbers, an invisible pick plane on layer 1 (only raycast target), pooled particles on layer 3; shaders prewarmed with `renderer.compile`; board rebuilt on quality or palette change; disposal on rebuild. Budget: ≤ 1024 tiles → a handful of draw calls; DPR capped by tier; render loop stops when the tab hides.
+- **Persistence (localStorage):** `colorhaven.settings.v1` (graphics under its `gfx` object: `preset`, `render_scale`, `adaptive`, `show_fps`, per-category overrides), `colorhaven.progress.v2`, `colorhaven.snapshot.v2` (autosaved after every state change, cleared on completion; restored by **Continue**), `colorhaven.board.<id>`.
+- **Rendering:** one `InstancedMesh` for tiles, one canvas-texture overlay for numbers, an invisible pick plane on layer 1 (only raycast target), pooled particles and dust-mote `Points` on layer 3; shaders prewarmed with `renderer.compile`; board rebuilt on paper-detail, particle or palette change; disposal on rebuild (shared procedural textures and the PMREM environment live for the renderer's lifetime). Post chain: `RenderPass` → `GTAOPass` (subclassed to skip cosmetic layers) → `OutputPass` → grade `ShaderPass` → `SMAAPass`/FXAA, into a HalfFloat target (4× MSAA samples at Ultra). Budget: ≤ 1024 tiles → a handful of draw calls; DPR capped by preset; render loop stops when the tab hides; the title petals run only while the title is visible.
 - **Audio:** lazy fetch+decode after the first user gesture; every event has a synth fallback.
 - **E2E drive:** `tests/e2e.mjs` starts its own static server, launches headless Chrome via `playwright-core`, and only clicks real controls; `window.__colorhaven` is read to synchronise and to find `renderer.cellToScreen(cell)` for taps.
 - **Dev hooks:** `?autostart=practice|daily|journey|learn|selftest`, `?screen=settings|help|journey|pause`.
 
 ## 14. Testing and acceptance criteria
 
-- `npm test` (`tests/rules.test.mjs`, 1421 assertions): RNG determinism, level generation/validation across tiers, all 40 journey stages valid with reachable move limits, 7 daily boards, tutorial count, palettes, every command path and rejection code, completion and move-limit terminals, score components, serialization/migration, replay hash property test, hint legality, tie-breaks, payload type guards.
-- `tests/e2e.mjs` (desktop 1280×800 mouse, mobile 390×844 touch, learn, ranked): title → journey map (40 stages, 39 locked) → stage 1 played by tray + region taps → results rows → progress persisted → stage 2 → hint/undo → pause/settings/resume → Esc → leave → Continue resumes; learn banner advances select → fill → all → acknowledge → lesson 2 → restart keeps the lesson; score-chase round submits and the Leaderboard screen lists it. Fails on any page error or console error.
+- `npm test` also runs `tests/gfx.test.mjs` (`node --test`): `detectPreset` on sample GPU strings (incl. the mobile cap), `resolve` with preset/override/scale clamp, Low as the post-free path, preset clears overrides, `describe`, and completeness of the nine Graphics-panel locales.
+- `tests/rules.test.mjs` (1421 assertions): RNG determinism, level generation/validation across tiers, all 40 journey stages valid with reachable move limits, 7 daily boards, tutorial count, palettes, every command path and rejection code, completion and move-limit terminals, score components, serialization/migration, replay hash property test, hint legality, tie-breaks, payload type guards.
+- `tests/e2e.mjs` graphics pass (desktop and mobile): Auto resolves to Low on the software GPU with no post chain; Settings opens from the title card; the Graphics panel's controls are all inside the viewport with no horizontal overflow; Low → Ultra → High apply live (shadows, composer, summary); a Shadows and an Ambient-motion override apply; everything survives a reload; a preset clears overrides; a practice round renders at High and Auto is restored from the pause menu.
+- `tests/e2e.mjs` (desktop 1280×800 mouse, mobile 390×844 touch, learn, ranked): title → journey map (40 stages, 39 locked) → stage 1 played by tray + region taps → results rows → progress persisted → stage 2 → hint/undo → pause/settings/resume → Esc → leave → Continue resumes; learn banner advances select → fill → all → acknowledge → lesson 2 → restart keeps the lesson; score-chase round submits and the Leaderboard screen lists it. Fails on any page error or console error or warning.
 - `tests/server.smoke.mjs`: time, static, traversal refusal, valid daily replay accepted, tampered score 422, idempotent duplicate, envelope hidden on GET, save round-trip.
 - QA bar (checkable): every mode reachable by clicking; no console errors/warnings on desktop and mobile; tray, pause and results buttons visible at 390×844 portrait and 844×390 landscape; text never clipped in cards (they scroll); reduced motion removes all animation; keyboard-only completes a board.
 

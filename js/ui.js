@@ -128,7 +128,7 @@ export function clearScreens() {
 export const DEFAULT_SETTINGS = {
   volMusic: 60, volEffects: 80, volAmbience: 40, volVoice: 80,
   captions: false,
-  quality: 'medium',
+  gfx: {},               // Graphics panel (gfx.js): {} = Auto preset
   reducedMotion: false,
   highContrast: false,
   cvdPalette: false,

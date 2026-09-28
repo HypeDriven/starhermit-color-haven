@@ -376,3 +376,42 @@ input[type="range"] { width: 8rem; }
 }
 
 body.reduced-motion * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+
+/* ============================== graphics ============================== */
+
+.gfx-fieldset { grid-column: 1 / -1; min-width: 0; }
+.gfx-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  column-gap: 1.2rem;
+}
+.gfx-grid label { min-width: 0; }
+.gfx-grid label > span:first-child { flex: 1 1 auto; min-width: 0; }
+.gfx-grid select { max-width: 11.5rem; min-height: 2.25rem; font: inherit; font-size: 0.9rem; }
+.gfx-scale-wrap { display: inline-flex; align-items: center; gap: 0.4rem; }
+.gfx-scale-wrap input[type="range"] { width: 7rem; }
+.gfx-scale-out { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+.gfx-summary { margin: 0.6rem 0 0; overflow-wrap: anywhere; }
+.gfx-note { margin: 0.4rem 0 0; color: var(--danger); font-size: 0.9rem; }
+.fps-meter {
+  position: fixed; left: calc(0.5rem + env(safe-area-inset-left)); bottom: calc(0.5rem + env(safe-area-inset-bottom));
+  z-index: 60; pointer-events: none;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); color: var(--ink);
+  border: 1px solid var(--panel-edge); border-radius: 8px;
+  padding: 0.15rem 0.45rem; font-size: 0.75rem; font-variant-numeric: tabular-nums;
+}
+.fps-meter[hidden] { display: none; }
+.title-petals { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.title-petals[hidden] { display: none; }
+#screen-title { position: fixed; }
+#screen-title > .screen-inner { position: relative; z-index: 1; }
+body.high-contrast .title-petals { display: none; }
+@media (max-width: 640px) {
+  .gfx-grid { grid-template-columns: 1fr; }
+  /* Label above its control so option text is never truncated. */
+  .gfx-grid label:not(.check) { flex-direction: column; align-items: stretch; gap: 0.25rem; margin: 0.55rem 0; }
+  .gfx-grid select { max-width: none; width: 100%; }
+  .gfx-scale-wrap input[type="range"] { flex: 1; width: auto; }
+}
+.title-links { justify-content: center; margin-top: 0.9rem; }
+.settings-grid fieldset { min-width: 0; }
+.settings-grid fieldset:not(.gfx-fieldset) input[type="range"] { width: auto; flex: 0 1 8rem; min-width: 4rem; }

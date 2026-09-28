@@ -12,6 +12,8 @@ import {
 } from './content.js';
 import { GameSession } from './session.js';
 import { PaperRenderer, isWebGLAvailable } from './render.js';
+import { mountGraphicsPanel } from './gfx-ui.js';
+import { TitlePetals } from './title-fx.js';
 import { AudioEngine } from './audio.js';
 import { Platform } from './platform.js';
 import {
@@ -73,10 +75,13 @@ class App {
     }
 
     this.renderer = new PaperRenderer($('#canvas-host'), {
-      quality: this.settings.quality,
+      gfx: this.settings.gfx,
       reducedMotion: this.settings.reducedMotion,
     });
     this.renderer.start();
+    this.petals = new TitlePetals($('#screen-title'));
+    this._applyTitleFx();
+    this.renderer.onGraphicsChange(() => this._applyTitleFx());
     this._wireChrome();
     this._wireInput();
     this._wireSettings();
@@ -133,6 +138,8 @@ class App {
     $('#btn-help').addEventListener('click', () => { this.audio.uiTick(); showScreen('help'); });
     $('#btn-help-close').addEventListener('click', () => closeScreen());
     $('#btn-settings-close').addEventListener('click', () => closeScreen());
+    $('#btn-title-settings').addEventListener('click', () => { this.audio.uiTick(); showScreen('settings'); });
+    $('#btn-title-help').addEventListener('click', () => { this.audio.uiTick(); showScreen('help'); });
     $('#btn-scores-close').addEventListener('click', () => closeScreen());
     $('#btn-journey-back').addEventListener('click', () => closeScreen());
     $('#btn-pause').addEventListener('click', () => this.pauseGame('user'));
@@ -892,11 +899,15 @@ class App {
     bind('#vol-ambience', 'volAmbience', () => this._applyAudioSettings());
     bind('#vol-voice', 'volVoice', () => this._applyAudioSettings());
     bind('#set-captions', 'captions');
-    bind('#set-quality', 'quality', () => {
-      this.renderer.setQuality(s.quality);
-      if (this.session) this.renderer.syncState(this.session.state, []);
+    const panel = mountGraphicsPanel($('#gfx-fieldset'), {
+      renderer: this.renderer,
+      getSaved: () => ({ ...(s.gfx || {}) }),
+      save: (next) => { s.gfx = next; saveSettings(s); this.platform.track('settings_change', { key: 'gfx' }); },
     });
-    bind('#set-motion', 'reducedMotion', () => this.renderer.setReducedMotion(s.reducedMotion));
+    // Refresh the live summary (pixels, fps, GPU) whenever the panel opens.
+    new MutationObserver(() => { if (!$('#screen-settings').hidden) panel.refresh(); })
+      .observe($('#screen-settings'), { attributes: true, attributeFilter: ['hidden'] });
+    bind('#set-motion', 'reducedMotion', () => { this.renderer.setReducedMotion(s.reducedMotion); this._applyTitleFx(); });
     bind('#set-contrast', 'highContrast');
     bind('#set-cvd', 'cvdPalette', () => {
       if (this.session && this.level) {
@@ -913,6 +924,12 @@ class App {
 
     // Audio captions → aria-live.
     this.audio.onCaption((text) => { if (this.settings.captions) announce(`♪ ${text}`); });
+  }
+
+  _applyTitleFx() {
+    const reduce = this.settings.reducedMotion ||
+      (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    this.petals.setEnabled(this.renderer.q.ambient === 'on' && !reduce);
   }
 
   _applyAudioSettings() {
