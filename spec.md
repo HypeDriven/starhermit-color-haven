@@ -251,3 +251,7 @@ Per https://wiki.starhermit.com/ conventions the game ships `starhermit.txt` (`n
 - Ship the nine required locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT) via a string table with a language picker defaulting from `navigator.language`.
 - Route ranked submissions through `server.js` (`POST /api/v1/leaderboard/<board>`) when the host is online, keeping the local board as the offline fallback.
 - Cloud-save conflict handling for the platform slot (today: remote wins on boot).
+
+## Browser interference
+
+`browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.
