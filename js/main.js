@@ -26,6 +26,17 @@ import {
   renderResults, renderJourney, renderHelp, renderScores,
 } from './ui.js';
 import { paletteFor } from './content.js';
+import { platformStrings } from './platform-strings.js';
+
+const PT = platformStrings(typeof navigator !== 'undefined' ? navigator.language : 'en-US'); // StarHermit UI strings
+
+// Short visual confirmation on any screen (the HUD toast lives in the round view).
+function pageToast(text) {
+  const t = el('div', { class: 'ch-page-toast', text });
+  t.setAttribute('role', 'status');
+  document.body.append(t);
+  setTimeout(() => t.remove(), 3500);
+}
 
 const SNAPSHOT_KEY = 'colorhaven.snapshot.v2';
 
@@ -66,13 +77,22 @@ class App {
       // line honest while the mirror debounces/flushes.
       this.platform.onSync(() => this._updateTitle());
       try { await Promise.race([this.platform.fetchProfile(), new Promise((r) => setTimeout(r, 2000))]); } catch { /* lands later */ }
-      this.platform.loadCloud().then((remote) => {
-        if (!remote || !remote.progress) return;
-        Object.assign(this.progress, remote.progress);
-        saveProgress(this.progress);
-        this._updateTitle();
-      }).catch(() => {});
+      // Remote progress wins; then the settings KV wins over saved preferences.
+      try {
+        await Promise.race([(async () => {
+          const remote = await this.platform.loadCloud();
+          if (remote && remote.progress) { Object.assign(this.progress, remote.progress); saveProgress(this.progress); }
+          const kv = await this.platform.getSettings();
+          if (Object.keys(kv).length) { Object.assign(this.settings, kv); saveSettings(this.settings); applySettingsClasses(this.settings); }
+        })(), new Promise((r) => setTimeout(r, 3000))]);
+      } catch { /* local save stays authoritative */ }
     }
+    await this.platform.loadBindings();
+    this.platform.onAuth((a) => {
+      if (a.signedIn) return;
+      pageToast(PT.signedOut);
+      this._updateTitle();
+    });
 
     this.renderer = new PaperRenderer($('#canvas-host'), {
       gfx: this.settings.gfx,
@@ -86,7 +106,7 @@ class App {
     this._wireInput();
     this._wireSettings();
     this._applyAudioSettings();
-    renderHelp($('#help-cards'));
+    renderHelp($('#help-cards'), (a) => this.platform.keyLabel(a));
     this._updateTitle();
     showScreen('title');
     document.addEventListener('visibilitychange', () => this._onVisibility());
@@ -140,6 +160,13 @@ class App {
     $('#btn-settings-close').addEventListener('click', () => closeScreen());
     $('#btn-title-settings').addEventListener('click', () => { this.audio.uiTick(); showScreen('settings'); });
     $('#btn-title-help').addEventListener('click', () => { this.audio.uiTick(); showScreen('help'); });
+    $('#btn-title-signin').addEventListener('click', () => this.platform.signIn());
+    $('#btn-title-invite').addEventListener('click', async () => {
+      this.audio.uiTick();
+      const ok = await this.platform.copyInvite();
+      const msg = ok ? PT.inviteCopied : PT.inviteFailed;
+      pageToast(msg); announce(msg);
+    });
     $('#btn-scores-close').addEventListener('click', () => closeScreen());
     $('#btn-journey-back').addEventListener('click', () => closeScreen());
     $('#btn-pause').addEventListener('click', () => this.pauseGame('user'));
@@ -201,6 +228,9 @@ class App {
     $('#daily-summary').textContent = `Today ${info.date} · tier ${info.tier}`;
     // Cloud mirror: every local progress write also queues a debounced PUT.
     if (this.platform.hosted) this.platform.saveCloud({ progress: this.progress });
+    const signIn = $('#btn-title-signin'), invite = $('#btn-title-invite');
+    signIn.textContent = PT.signIn; signIn.hidden = !this.platform.canSignIn();
+    invite.textContent = PT.invite; invite.hidden = !this.platform.hosted;
     if (this.platform.hosted) {
       const name = this.platform.profile ? this.platform.profile.name : '…';
       const syncTxt = this.platform.sync === 'synced' ? 'progress synced'
@@ -807,7 +837,7 @@ class App {
 
     host.addEventListener('keydown', (e) => this._onKey(e));
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || this.platform.actionFor(e) === 'cancel') {
         const cur = currentScreen();
         if (cur === 'pause') this.resumeGame('key');
         else if (cur) closeScreen();
@@ -821,20 +851,21 @@ class App {
 
   _onKey(e) {
     if (!this.session || this.session.paused || this.session.isOver) return;
+    const act = this.platform.actionFor(e); // StarHermit control bindings
     let handled = true;
-    switch (e.key) {
-      case 'ArrowLeft': this._moveFocus(-1, 0); break;
-      case 'ArrowRight': this._moveFocus(1, 0); break;
-      case 'ArrowUp': this._moveFocus(0, -1); break;
-      case 'ArrowDown': this._moveFocus(0, 1); break;
-      case 'Enter': case ' ': this.session.fillCell(this.focusCell); break;
-      case 'u': case 'U': this.session.undo(); break;
-      case 'h': case 'H': this.session.hint(); break;
-      case 'c': case 'C': this.renderer.resetCamera(); break;
-      case 'p': case 'P': this.pauseGame('key'); break;
+    switch (act) {
+      case 'left': this._moveFocus(-1, 0); break;
+      case 'right': this._moveFocus(1, 0); break;
+      case 'up': this._moveFocus(0, -1); break;
+      case 'down': this._moveFocus(0, 1); break;
+      case 'fill': this.session.fillCell(this.focusCell); break;
+      case 'undo': this.session.undo(); break;
+      case 'hint': this.session.hint(); break;
+      case 'recenter': this.renderer.resetCamera(); break;
+      case 'pause': this.pauseGame('key'); break;
       default:
-        if (/^[1-8]$/.test(e.key)) {
-          const c = +e.key - 1;
+        if (act && /^color[1-8]$/.test(act)) {
+          const c = +act.slice(5) - 1;
           if (c < this.palette.length) this.session.selectColor(c);
         } else handled = false;
     }
@@ -889,6 +920,7 @@ class App {
         s[key] = node.type === 'checkbox' ? node.checked :
           (node.type === 'range' ? +node.value : node.value);
         saveSettings(s);
+        this.platform.mirrorSettings(s);
         applySettingsClasses(s);
         if (apply) apply();
         this.platform.track('settings_change', { key });
@@ -902,7 +934,7 @@ class App {
     const panel = mountGraphicsPanel($('#gfx-fieldset'), {
       renderer: this.renderer,
       getSaved: () => ({ ...(s.gfx || {}) }),
-      save: (next) => { s.gfx = next; saveSettings(s); this.platform.track('settings_change', { key: 'gfx' }); },
+      save: (next) => { s.gfx = next; saveSettings(s); this.platform.mirrorSettings(s); this.platform.track('settings_change', { key: 'gfx' }); },
     });
     // Refresh the live summary (pixels, fps, GPU) whenever the panel opens.
     new MutationObserver(() => { if (!$('#screen-settings').hidden) panel.refresh(); })

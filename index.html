@@ -11,6 +11,8 @@
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/three/addons/" } }
 </script>
 <script src="browser-guard.js"></script>
+<script src="starhermit-sdk.js"></script>
+<script>StarHermit.init();</script>
 </head>
 <body>
 <a class="skip-link" href="#canvas-host">Skip to board</a>
@@ -112,6 +114,8 @@
       <div class="row gap title-links">
         <button id="btn-title-settings" type="button" class="ghost-btn">Settings</button>
         <button id="btn-title-help" type="button" class="ghost-btn">Help</button>
+        <button id="btn-title-invite" type="button" class="ghost-btn" hidden>Invite a friend</button>
+        <button id="btn-title-signin" type="button" class="ghost-btn" hidden>Sign in with StarHermit</button>
       </div>
       <p id="profile-line" class="muted small"></p>
       <p id="achievement-line" class="muted small"></p>

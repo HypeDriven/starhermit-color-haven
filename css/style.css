@@ -348,8 +348,8 @@ input[type="range"] { width: 8rem; }
 /* Portrait mobile: status top, board middle, tray bottom (thumb zone). */
 @media (max-width: 640px) and (orientation: portrait) {
   #layout { display: flex; flex-direction: column; padding: 0.4rem; gap: 0.4rem; }
-  #play-area { flex: 1 1 auto; }
-  #rail-left, #rail-right { flex: 0 0 auto; }
+  #play-area { flex: 1 1 auto; min-height: 30dvh; }
+  #rail-left, #rail-right { flex: 0 0 auto; max-height: 22dvh; overflow-y: auto; }
   #stats-card, #score-card { display: none; } /* drawers: reachable via pause */
   .results-art { max-height: 7rem; } /* keep the breakdown and buttons within one thumb-scroll */
   .mode-grid { grid-template-columns: repeat(2, 1fr); }
@@ -415,3 +415,11 @@ body.high-contrast .title-petals { display: none; }
 .title-links { justify-content: center; margin-top: 0.9rem; }
 .settings-grid fieldset { min-width: 0; }
 .settings-grid fieldset:not(.gfx-fieldset) input[type="range"] { width: auto; flex: 0 1 8rem; min-width: 4rem; }
+
+/* StarHermit: title buttons stay hidden until they apply; page-level toast */
+.title-links button[hidden] { display: none; }
+.ch-page-toast {
+  position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 1000; max-width: min(92vw, 32em); padding: 10px 16px; border-radius: 10px; text-align: center;
+  background: #fffaf2; color: #3a2f28; border: 1px solid rgba(58, 47, 40, 0.25); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}

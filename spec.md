@@ -25,7 +25,7 @@
 | `server.js` | Authoritative game script: static files, server time, replay-validated leaderboards, peer-scoped saves. |
 | `sfx/` | 16 Opus clips, `manifest.txt` (canonical), `manifest.json` (generator input), `manifest.md`. |
 | `assets/` | `title-backdrop.webp`, `results-studio.webp` (FLUX.2 key art). `coverart.png` at the root is the store cover. |
-| `tests/` | `rules.test.mjs` + `gfx.test.mjs` (npm test), `e2e.mjs` (Playwright, real UI), `server.smoke.mjs` (HTTP). |
+| `tests/` | `rules.test.mjs` + `gfx.test.mjs` + `platform.test.mjs` (npm test), `e2e.mjs` (Playwright, real UI), `server.smoke.mjs` (HTTP). |
 | `vendor/three.module.js` | Three.js r160 (import-mapped as `three`). |
 | `vendor/three/addons/` | r160 addons (import-mapped as `three/addons/`): EffectComposer, RenderPass, ShaderPass, OutputPass, GTAOPass, SMAAPass, FXAAShader and their shaders, RoomEnvironment, RoundedBoxGeometry. |
 | `starhermit.txt` | `name=Color Haven`, `launch=index.html`, `server=server.js`, `cover=coverart.png`. |
@@ -191,18 +191,25 @@ Safe areas: `#app` pads with `env(safe-area-inset-*)`; the tray adds the bottom 
 
 ## 12. StarHermit integration
 
-Per https://wiki.starhermit.com/ conventions the game ships `starhermit.txt` (`name`, `launch`, `owner`, `server`, `cover`).
+Per https://wiki.starhermit.com/ conventions the game ships `starhermit.txt` (`name`, `launch`, `owner`, `server`, `cover`, and one `control.*` line per keyboard action). `index.html` loads `starhermit-sdk.js` (the canonical client, shipped unchanged) and calls `StarHermit.init()` in the head; `js/platform.js` is the game's adapter over `window.StarHermit`. Standalone (no token) the game makes no network requests.
 
 | Feature | Status |
 |---|---|
-| Server time | Used: `GET /api/v1/time` probed at boot and on tab return (Bearer when hosted); round-trip-adjusted offset drives the daily date (`platform.js` `syncTime`, `now`). |
-| Game script | `server.js` serves the distribution, `GET/POST /api/v1/leaderboard/<board>` with replay validation, `GET/POST /api/v1/save` scoped to the peer address (local testing only — the client uses the platform cloud slot), `204` sinks for `/activity`, `/presence`, `/telemetry`. |
-| Leaderboards | Client submits to a **local** board in `localStorage` (`platform.js` `submitScore`/`fetchBoard`) and shows rank on results plus the Leaderboard screen; hosted entries carry the account nickname + id. The server board API is exercised by `tests/server.smoke.mjs`. |
-| Launch token / identity | `#game_token=<jwt>` read from the URL fragment (optional `&session_id=`, stripped after the read; query `?token=`/`?scope=` kept for local dev), decoded for `sub` + `game_scope` (never hard-coded), kept in memory only, sent as `Authorization: Bearer` on every hosted call, and re-minted every 45 min via `POST /api/v1/games/{slug}/launch-token` (60 s retry). The title line shows "Playing as <nickname> · sync status" from `GET /api/v1/users/{sub}/profile` (never usernames, never `/api/v1/me`; `Player <id8>` fallback); offline it shows the local guest. |
-| Cloud save | Used when hosted: the progress document mirrors to one zip+base64 slot at `GET/PUT /api/v1/me/cloud-saves/{slug}` — remote wins on boot, saves debounce 2 s and flush on `pagehide`/hidden with keepalive, and the title line reflects sync status. localStorage stays the offline cache. |
-| Achievements | Local, idempotent unlocks in `progress.achievements`. |
+| Launch token / renewal | The SDK reads `#game_token=<jwt>` (library launch) or `#access_token=` (sign-in return), strips it, keeps it in memory, takes the slug from `game_scope` (never hard-coded) and renews it via `POST /api/v1/games/{slug}/launch-token`. If renewal is refused a toast says the player was signed out, the sign-in button returns and play continues locally. |
+| Sign in | On `*.starhermit.com` without a token the title shows **Sign in with StarHermit**; hidden when signed in and locally. |
+| Identity | The title line shows "Playing as <nickname> · sync status" (`StarHermit.profile()`, `Player <id>` fallback, never `/api/v1/me`); offline it shows the local guest. |
+| Cloud save | Used when signed in: the progress document mirrors to `/api/v1/me/cloud-saves/game:<slug>` — remote wins on boot (bounded 3 s, before the title renders), saves debounce 2 s and flush on `pagehide`/hidden, and the title line reflects sync status. localStorage stays the offline cache. |
+| Settings KV | Volumes, captions, graphics, reduced motion, contrast, colour-vision palette, large text, handedness and haptics are patched to the game's settings KV on change (debounced, after the KV was read) and applied at boot, where the platform value wins. |
+| Controls | Eighteen keyboard actions (focus moves, fill, undo, hint, re-center, pause, cancel, colours 1–8) are declared in `starhermit.txt`; `loadBindings()` resolves the player's keys, keydown routes by `event.code` through them, and the Help keyboard card shows the effective keys. |
+| Invite link | Signed in, the title shows **Invite a friend**, copying `StarHermit.inviteLink()` with a confirmation toast. |
+| Server time | Signed in only: `GET /api/v1/time` (own server) probed at boot and on tab return; the round-trip-adjusted offset drives the daily date. Standalone uses the local clock. |
+| Game server | `server.js` serves the distribution, `GET/POST /api/v1/leaderboard/<board>` with replay validation, `GET/POST /api/v1/save` (local testing only — the client uses the platform cloud slot) and `204` sinks for `/activity`, `/presence`, `/telemetry`. It is not a platform session script. |
+| Leaderboards | Client submits to a **local** board in `localStorage` (`submitScore`/`fetchBoard`) and shows rank on results plus the Leaderboard screen; signed-in entries carry the account nickname + id. No platform board: the server reports no platform scores. |
+| Achievements | Local, idempotent unlocks in `progress.achievements`; none declared on the platform. |
 | Presence / activity / telemetry | Not transmitted (no-ops with a retained event whitelist). |
-| Sessions, rooms, chat, voice | Not used: solo game. |
+| Sessions, matchmaking, session invites, chat, replays, voice | Not used: solo game. |
+
+New platform strings (sign in, invite, toasts) ship in all nine locales (`js/platform-strings.js`, picked from `navigator.language`).
 
 ## 13. Technical architecture
 
@@ -215,7 +222,7 @@ Per https://wiki.starhermit.com/ conventions the game ships `starhermit.txt` (`n
 
 ## 14. Testing and acceptance criteria
 
-- `npm test` also runs `tests/gfx.test.mjs` (`node --test`): `detectPreset` on sample GPU strings (incl. the mobile cap), `resolve` with preset/override/scale clamp, Low as the post-free path, preset clears overrides, `describe`, and completeness of the nine Graphics-panel locales.
+- `npm test` also runs `tests/platform.test.mjs` (`node --test`: the adapter over the shipped SDK with a stubbed fetch and launch fragment — token claims, fragment stripped, nickname, bearer header, cloud-save round-trip on `game:<slug>`, settings patch filtered to preferences, bindings incl. colour keys, invite link; standalone makes zero fetches) and `tests/gfx.test.mjs` (`node --test`): `detectPreset` on sample GPU strings (incl. the mobile cap), `resolve` with preset/override/scale clamp, Low as the post-free path, preset clears overrides, `describe`, and completeness of the nine Graphics-panel locales.
 - `tests/rules.test.mjs` (1421 assertions): RNG determinism, level generation/validation across tiers, all 40 journey stages valid with reachable move limits, 7 daily boards, tutorial count, palettes, every command path and rejection code, completion and move-limit terminals, score components, serialization/migration, replay hash property test, hint legality, tie-breaks, payload type guards.
 - `tests/e2e.mjs` graphics pass (desktop and mobile): Auto resolves to Low on the software GPU with no post chain; Settings opens from the title card; the Graphics panel's controls are all inside the viewport with no horizontal overflow; Low → Ultra → High apply live (shadows, composer, summary); a Shadows and an Ambient-motion override apply; everything survives a reload; a preset clears overrides; a practice round renders at High and Auto is restored from the pause menu.
 - `tests/e2e.mjs` (desktop 1280×800 mouse, mobile 390×844 touch, learn, ranked): title → journey map (40 stages, 39 locked) → stage 1 played by tray + region taps → results rows → progress persisted → stage 2 → hint/undo → pause/settings/resume → Esc → leave → Continue resumes; learn banner advances select → fill → all → acknowledge → lesson 2 → restart keeps the lesson; score-chase round submits and the Leaderboard screen lists it. Fails on any page error or console error or warning.

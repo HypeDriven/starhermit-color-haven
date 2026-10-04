@@ -373,12 +373,14 @@ export function renderJourney(grid, progress, onPick) {
 /* Help cards (generated from current control mappings)                */
 /* ------------------------------------------------------------------ */
 
-export function renderHelp(container) {
+export function renderHelp(container, keyLabel) {
   container.textContent = '';
+  const k = keyLabel || ((a) => ({ left: '←', right: '→', up: '↑', down: '↓', fill: 'Enter / Space', undo: 'U', hint: 'H', recenter: 'C', pause: 'P', cancel: 'Esc' }[a] || a));
   const cards = [
     { h: 'The loop', ps: ['Pick a numbered color in the tray.', 'Fill every region showing that number.', 'Finish the picture — there is no timer and no way to lose.'] },
     { h: 'Mouse / touch', ps: ['Tap a region to fill it with the selected color.', 'Hover previews the result before you commit.', 'Drag to pan nothing — the board always fits.'] },
-    { h: 'Keyboard', ps: ['Arrow keys — move between regions', 'Enter / Space — fill focused region', '1–8 — pick a color', 'U — undo, H — hint, C — re-center camera, Esc / P — pause'] },
+    { h: 'Keyboard', ps: [`${k('left')} ${k('right')} ${k('up')} ${k('down')} — move between regions`, `${k('fill')} — fill focused region`,
+      `${k('color1')}–${k('color8')} — pick a color`, `${k('undo')} — undo, ${k('hint')} — hint, ${k('recenter')} — re-center camera, ${k('cancel')} / ${k('pause')} — pause`] },
     { h: 'Gamepad', ps: ['D-pad / left stick — move focus', 'A — fill, X — undo, Y — hint', 'Start — pause'] },
     { h: 'Scoring', ps: ['Regions filled and accuracy earn points.', 'Finishing quickly adds a pace bonus.', 'Hints and undos cost a little. Slips cost more.'] },
     { h: 'Symbols', ps: ['Every color also has a symbol (● ▲ ■ ◆ …), so numbers never rely on color alone. A color-vision-safe palette is in Settings.'] },
