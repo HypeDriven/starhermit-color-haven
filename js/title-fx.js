@@ -57,7 +57,7 @@ export class TitlePetals {
     this._raf = 0;
     const dt = Math.min(0.05, (now - this._last) / 1000);
     this._last = now;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) * ((window.UIScale && window.UIScale.value) || 1);
     const w = this.screen.clientWidth, h = this.screen.clientHeight;
     const c = this.canvas;
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {

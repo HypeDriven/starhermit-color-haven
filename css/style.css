@@ -86,8 +86,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 /* ============================== layout ============================== */
 
+/* Large screens: #app (all DOM UI, screens and the board host) and body-level toast/FPS meter zoom by
+   --ui-scale (ui-scale.js; 1 up to 1600x1000); vh/vw/dvh inside them are divided by it. The board canvas
+   multiplies its pixel ratio by UIScale.value so it stays sharp. */
+#app, .ch-page-toast, .fps-meter { zoom: var(--ui-scale, 1); }
+
 #app {
-  height: 100dvh;
+  height: calc(100dvh / var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
@@ -244,7 +249,7 @@ body.left-handed #palette-tray { flex-direction: row-reverse; }
   box-shadow: var(--shadow);
   padding: 1.6rem;
   width: min(34rem, 100%);
-  max-height: calc(100dvh - 2rem);
+  max-height: calc(100dvh / var(--ui-scale, 1) - 2rem);
   overflow-y: auto;
 }
 .screen-inner.wide { width: min(48rem, 100%); }
@@ -420,6 +425,6 @@ body.high-contrast .title-petals { display: none; }
 .title-links button[hidden] { display: none; }
 .ch-page-toast {
   position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%);
-  z-index: 1000; max-width: min(92vw, 32em); padding: 10px 16px; border-radius: 10px; text-align: center;
+  z-index: 1000; max-width: min(calc(92vw / var(--ui-scale, 1)), 32em); padding: 10px 16px; border-radius: 10px; text-align: center;
   background: #fffaf2; color: #3a2f28; border: 1px solid rgba(58, 47, 40, 0.25); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }

@@ -10,6 +10,7 @@
 | Path | Responsibility |
 |---|---|
 | `index.html` | Shell: topbar, two rails, canvas host, palette tray, eight overlay screens, ARIA live regions, WebGL compat notice. |
+| `ui-scale.js` | Shared large-screen UI scale helper (canonical copy in the games tools folder; do not edit here). |
 | `css/style.css` | Palette tokens, layout grid, responsive breakpoints, settings classes (`high-contrast`, `large-text`, `left-handed`, `reduced-motion`). |
 | `js/main.js` | `App`: boot, screen state machine, mode setup, round lifecycle, tutorial engine, input (pointer/keyboard/gamepad), settings binding, snapshot resume. |
 | `js/rules.js` | Pure rules engine: `createGame`, `applyCommand`, `listLegalActions`, `explainFill`, `score`, `hashState`, `replay`, `compareResults`, seeded RNG. |
@@ -135,6 +136,7 @@ round ─► results (Next · Replay · Leaderboard* · Home)      *ranked only
 **Portrait phone (≤640 px):** column flex — board fills, Objective card, Actions; Session and Score-preview cards are hidden; the topbar status is hidden; tray buttons narrow to 3.6 rem; mode grid becomes 2 columns.
 **Landscape phone (≤500 px tall):** 12 rem rails, compact topbar without the brand name, results illustration hidden.
 Safe areas: `#app` pads with `env(safe-area-inset-*)`; the tray adds the bottom inset. Must never be cut off: palette tray, Pause, the coach banner, the results buttons (the card scrolls inside `max-height: calc(100dvh − 2rem)`).
+**Large screens (above 1600×1000):** `ui-scale.js` sets `--ui-scale` (the smaller of width/1600 and height/1000, capped at 2.5; 2560×1440 → 1.44, 3840×2160 → 2.16) and `#app` (topbar, rails, board host, tray, screens) plus the page toast and FPS meter are CSS-`zoom`ed by it, with their dvh/vw lengths divided by it, so the whole layout grows proportionally; the board renderer and title petals multiply their pixel ratio by `UIScale.value` to stay sharp, and the coach-banner reservation converts its measured rect back to layout px.
 
 ## 8. Art direction
 

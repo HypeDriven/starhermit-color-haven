@@ -837,7 +837,8 @@ export class PaperRenderer {
 
   /** Canvas size × (dpr cap · preset scale · render scale · adaptive scale). */
   _applySize(cw, ch) {
-    const ratio = pixelRatio(this.q, window.devicePixelRatio || 1, this.adaptiveScale);
+    // × UIScale: the board host sits inside the zoomed #app, so its CSS size is zoomed on large screens.
+    const ratio = pixelRatio(this.q, window.devicePixelRatio || 1, this.adaptiveScale) * ((window.UIScale && window.UIScale.value) || 1);
     if (cw === this._size[0] && ch === this._size[1] && ratio === this.pixelRatio) return;
     this._size = [cw, ch];
     this.pixelRatio = ratio;

@@ -72,8 +72,10 @@ function reserveCoachSpace() {
   requestAnimationFrame(() => {
     // Short landscape docks the banner beside the board instead (see CSS).
     const docked = window.matchMedia('(max-height: 500px) and (orientation: landscape)').matches;
-    const h = b.hidden || docked ? 0 : Math.ceil(b.getBoundingClientRect().height) + 12;
-    const w = b.hidden || !docked ? 0 : Math.ceil(b.getBoundingClientRect().width) + 12;
+    // Rects are visual (zoomed) px; --coach-h/-w are used inside the zoomed #app, so divide by the UI scale.
+    const z = (window.UIScale && window.UIScale.value) || 1;
+    const h = b.hidden || docked ? 0 : Math.ceil(b.getBoundingClientRect().height / z) + 12;
+    const w = b.hidden || !docked ? 0 : Math.ceil(b.getBoundingClientRect().width / z) + 12;
     area.style.setProperty('--coach-h', h + 'px');
     area.style.setProperty('--coach-w', w + 'px');
   });

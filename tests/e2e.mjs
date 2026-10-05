@@ -477,10 +477,11 @@ async function runGraphicsPass(label, viewport, hasTouch) {
       if (!/auto/i.test(opts[0]) || opts.length !== 5) throw new Error('quality options: ' + opts.join('|'));
       const cats = await page.locator('#gfx-fieldset select[id^="gfx-"]').count();
       if (cats < 6) throw new Error('expected per-category selects, got ' + cats);
+      const vp = page.viewportSize() || viewport;
       for (const id of ['#set-quality', '#gfx-scale', '#gfx-shadows', '#gfx-adaptive', '#gfx-fps', '#btn-settings-close']) {
         await page.locator(id).scrollIntoViewIfNeeded();
         const box = await page.locator(id).boundingBox();
-        if (!box || box.x < 0 || box.x + box.width > viewport.width + 1 || box.y < 0 || box.y + box.height > viewport.height + 1) {
+        if (!box || box.x < 0 || box.x + box.width > vp.width + 1 || box.y < 0 || box.y + box.height > vp.height + 1) {
           throw new Error(`${id} not fully visible: ${JSON.stringify(box)}`);
         }
       }
