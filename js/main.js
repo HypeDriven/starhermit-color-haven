@@ -61,6 +61,8 @@ class App {
     this._lastPad = {};
     this._pointer = { down: false, x: 0, y: 0, t: 0, dragged: false };
     this._setupConfig = {};
+    this._cloudReady = false;    // boot cloud compare done: progress pushes allowed
+    this._pushPending = false;
   }
 
   async boot() {
@@ -72,16 +74,23 @@ class App {
     $('#app').hidden = false;
     await this.platform.init();
     this.platform.setConsent(true); // anonymous aggregate only
+    this._cloudReady = !this.platform.hosted;
     if (this.platform.hosted) {
       // Remote save wins over the local cache; sync status keeps the title
       // line honest while the mirror debounces/flushes.
       this.platform.onSync(() => this._updateTitle());
       try { await Promise.race([this.platform.fetchProfile(), new Promise((r) => setTimeout(r, 2000))]); } catch { /* lands later */ }
       // Remote progress wins; then the settings KV wins over saved preferences.
+      // Progress pushes wait for this load, even when it lands after the 3 s
+      // boot timeout, so a stale local copy is never queued over the cloud.
       try {
         await Promise.race([(async () => {
           const remote = await this.platform.loadCloud();
           if (remote && remote.progress) { Object.assign(this.progress, remote.progress); saveProgress(this.progress); }
+          this._cloudReady = true;
+          // Push only what changed after boot, or local progress into an empty slot.
+          if (this._pushPending || (!(remote && remote.progress) && this.progress.gamesPlayed > 0)) this._pushProgress();
+          this._updateTitle();
           const kv = await this.platform.getSettings();
           if (Object.keys(kv).length) { Object.assign(this.settings, kv); saveSettings(this.settings); applySettingsClasses(this.settings); }
         })(), new Promise((r) => setTimeout(r, 3000))]);
@@ -226,8 +235,6 @@ class App {
     $('#journey-summary').textContent = `${jp.done}/${jp.total} stages · ${jp.stars}★`;
     const info = dailyInfo(this.platform.now());
     $('#daily-summary').textContent = `Today ${info.date} · tier ${info.tier}`;
-    // Cloud mirror: every local progress write also queues a debounced PUT.
-    if (this.platform.hosted) this.platform.saveCloud({ progress: this.progress });
     const signIn = $('#btn-title-signin'), invite = $('#btn-title-invite');
     signIn.textContent = PT.signIn; signIn.hidden = !this.platform.canSignIn();
     invite.textContent = PT.invite; invite.hidden = !this.platform.hosted;
@@ -244,6 +251,16 @@ class App {
     }
     const unlocked = Object.keys(this.progress.achievements).length;
     $('#achievement-line').textContent = `Achievements: ${unlocked}/5 · Illustrations finished: ${this.progress.gamesPlayed}`;
+  }
+
+  // Cloud mirror: queued (debounced) at progress-write points, never from the
+  // title refresh (a sync-status change re-renders the title, which would
+  // re-queue a PUT forever), and only after the boot cloud compare.
+  _pushProgress() {
+    if (!this.platform.hosted) return;
+    if (!this._cloudReady) { this._pushPending = true; return; }
+    this._pushPending = false;
+    this.platform.saveCloud({ progress: this.progress });
   }
 
   _toTitle() {
@@ -625,6 +642,7 @@ class App {
       mode: this.mode, level: this.level, state: st, scoreTotal: sc.total, dateIso,
     });
     if (newAch.length) this.audio.achievement();
+    this._pushProgress();
 
     let rankInfo = '';
     if (this.ranked && st.terminalReason === TERMINAL.COMPLETED) {
