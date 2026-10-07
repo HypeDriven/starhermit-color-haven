@@ -224,6 +224,24 @@ export class Platform {
   /* Local board only — clients never submit to game leaderboards (wiki) and
    * the host does not guarantee a leaderboard route. */
 
+  /**
+   * Signed in only: post a completed ranked round's total to the platform
+   * `high-score` board (score-script.js). Resolves { posted, rank } — the
+   * player's rank on that board, or null. Standalone → not posted, no request.
+   */
+  async submitPlatformScore(total) {
+    const s = sdk();
+    if (!this.hosted || !s || typeof s.submitScores !== 'function') return { posted: false, rank: null };
+    let keys = [];
+    try { keys = await s.submitScores({ 'high-score': Math.max(0, Math.round(total)) }); } catch { keys = []; }
+    if (!keys.includes('high-score')) return { posted: false, rank: null };
+    try {
+      const r = await s.leaderboard('high-score', { pageSize: 100 });
+      const me = (r.items || []).find(i => i.userId === this.userId);
+      return { posted: true, rank: me ? me.rank : null };
+    } catch { return { posted: true, rank: null }; }
+  }
+
   async submitScore(board, entry) {
     const list = await this.fetchBoard(board);
     list.push(entry);

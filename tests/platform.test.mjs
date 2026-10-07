@@ -40,6 +40,24 @@ test('hosted: token, profile, cloud save game:<slug>, settings, bindings, invite
   assert.equal(p.keyLabel('color8'), '8');
   assert.equal(p.inviteLink(), `https://dashboard.starhermit.com/game-invite/${UID}/${SLUG}`);
   assert.equal(p.canSignIn(), false);
+
+  const sent = [];
+  sdk.submitScores = async (sc) => { sent.push(sc); return Object.keys(sc); };
+  sdk.leaderboard = async (key) => ({ items: key === 'high-score' ? [{ userId: UID, rank: 3 }] : [] });
+  assert.deepEqual(await p.submitPlatformScore(1520.6), { posted: true, rank: 3 });
+  assert.deepEqual(sent, [{ 'high-score': 1521 }]);
+  sdk.submitScores = async () => [];
+  assert.deepEqual(await p.submitPlatformScore(10), { posted: false, rank: null });
+});
+
+test('leaderboard line strings in every locale', async () => {
+  const { platformStrings, PLATFORM_LOCALES } = await import('../js/platform-strings.js');
+  assert.equal(PLATFORM_LOCALES.length, 9);
+  for (const l of PLATFORM_LOCALES) {
+    const t = platformStrings(l);
+    for (const k of ['lbPosting', 'lbRank', 'lbPosted', 'lbNotPosted']) assert.ok(t[k], l + ' ' + k);
+    assert.ok(t.lbRank.includes('{rank}'));
+  }
 });
 
 test('standalone: no token, no network', async () => {
@@ -57,6 +75,7 @@ test('standalone: no token, no network', async () => {
     await p.loadBindings();
     assert.equal(p.actionFor({ code: 'KeyH' }), 'hint');
     assert.equal(p.inviteLink(), null);
+    assert.deepEqual(await p.submitPlatformScore(900), { posted: false, rank: null });
     assert.deepEqual(st.calls, []);
   } finally { st.restore(); }
 });

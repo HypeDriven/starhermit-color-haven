@@ -23,13 +23,14 @@
 | `js/ui.js` | DOM helpers, screen stack, settings/progress stores, palette tray, HUD, results/journey/help/leaderboard rendering, achievements. |
 | `js/audio.js` | `AudioEngine`: four buses, authored Opus one-shots with synth fallbacks, studio ambience loop, adaptive pentatonic pad. |
 | `js/platform.js` | StarHermit adapter: fragment launch token + Bearer + 45-min refresh, profile nickname, cloud-save slot (zip+base64, remote-preferred, debounced, sync status), `/api/v1/time` probe, local saves/boards, no-op activity/telemetry. |
-| `server.js` | Authoritative game script: static files, server time, replay-validated leaderboards, peer-scoped saves. |
+| `score-script.js` | StarHermit platform script (`server=`): range-checks a completed ranked round's total and posts it to the `high-score` leaderboard (canonical copy in the games repo's `tools/score-script.js`). |
+| `server.js` | Local dev server: static files, server time, replay-validated leaderboards, peer-scoped saves. |
 | `sfx/` | 16 Opus clips, `manifest.txt` (canonical), `manifest.json` (generator input), `manifest.md`. |
 | `assets/` | `title-backdrop.webp`, `results-studio.webp` (FLUX.2 key art). `coverart.png` at the root is the store cover. |
 | `tests/` | `rules.test.mjs` + `gfx.test.mjs` + `platform.test.mjs` (npm test), `e2e.mjs` (Playwright, real UI), `server.smoke.mjs` (HTTP). |
 | `vendor/three.module.js` | Three.js r160 (import-mapped as `three`). |
 | `vendor/three/addons/` | r160 addons (import-mapped as `three/addons/`): EffectComposer, RenderPass, ShaderPass, OutputPass, GTAOPass, SMAAPass, FXAAShader and their shaders, RoomEnvironment, RoundedBoxGeometry. |
-| `starhermit.txt` | `name=Color Haven`, `launch=index.html`, `server=server.js`, `cover=coverart.png`. |
+| `starhermit.txt` | `name=Color Haven`, `launch=index.html`, `server=score-script.js`, `cover=coverart.png`. |
 
 ## 2. Vision and design pillars
 
@@ -205,13 +206,14 @@ Per https://wiki.starhermit.com/ conventions the game ships `starhermit.txt` (`n
 | Controls | Eighteen keyboard actions (focus moves, fill, undo, hint, re-center, pause, cancel, colours 1–8) are declared in `starhermit.txt`; `loadBindings()` resolves the player's keys, keydown routes by `event.code` through them, and the Help keyboard card shows the effective keys. |
 | Invite link | Signed in, the title shows **Invite a friend**, copying `StarHermit.inviteLink()` with a confirmation toast. |
 | Server time | Signed in only: `GET /api/v1/time` (own server) probed at boot and on tab return; the round-trip-adjusted offset drives the daily date. Standalone uses the local clock. |
-| Game server | `server.js` serves the distribution, `GET/POST /api/v1/leaderboard/<board>` with replay validation, `GET/POST /api/v1/save` (local testing only — the client uses the platform cloud slot) and `204` sinks for `/activity`, `/presence`, `/telemetry`. It is not a platform session script. |
-| Leaderboards | Client submits to a **local** board in `localStorage` (`submitScore`/`fetchBoard`) and shows rank on results plus the Leaderboard screen; signed-in entries carry the account nickname + id. No platform board: the server reports no platform scores. |
+| Game server | `server.js` (local dev only) serves the distribution, `GET/POST /api/v1/leaderboard/<board>` with replay validation, `GET/POST /api/v1/save` (local testing only — the client uses the platform cloud slot) and `204` sinks for `/activity`, `/presence`, `/telemetry`. The platform runs `score-script.js` instead. |
+| Leaderboards | Client submits to a **local** per-seed board in `localStorage` (`submitScore`/`fetchBoard`) and shows its rank on results plus the Leaderboard screen; signed-in entries carry the account nickname + id. |
+| Platform leaderboard | When signed in, every completed ranked round (Daily, Challenge, Score chase) also posts its total through `StarHermit.submitScores` (`submitPlatformScore`: a practice session whose `score-script.js` posts it to the `high-score` board — integer, higher is better, 0–1,000,000). The results screen shows "Posting score…", then "Leaderboard rank: #N" (or posted / not posted) below the local-board line. Journey, Practice and Learn post nothing; standalone posts nothing and shows no line. |
 | Achievements | Local, idempotent unlocks in `progress.achievements`; none declared on the platform. |
 | Presence / activity / telemetry | Not transmitted (no-ops with a retained event whitelist). |
-| Sessions, matchmaking, session invites, chat, replays, voice | Not used: solo game. |
+| Sessions, matchmaking, session invites, chat, replays, voice | Not used: solo game (the only platform session is the score post's practice session). |
 
-New platform strings (sign in, invite, toasts) ship in all nine locales (`js/platform-strings.js`, picked from `navigator.language`).
+New platform strings (sign in, invite, toasts, leaderboard line) ship in all nine locales (`js/platform-strings.js`, picked from `navigator.language`).
 
 ## 13. Technical architecture
 
@@ -249,7 +251,7 @@ New platform strings (sign in, invite, toasts) ship in all nine locales (`js/pla
 ## 16. Known limitations
 
 - No localization layer; English only (see §10).
-- Leaderboards and achievements are local to the browser; the hosted board API in `server.js` is not called by the client, so "Leaderboard rank" on results is a local-board rank (`(local board)` suffix).
+- Per-seed leaderboards and achievements are local to the browser; the hosted board API in `server.js` is not called by the client, so the first "Leaderboard rank" line on results is a local-board rank (`(local board)` suffix). The platform `high-score` board is a single board across all ranked modes and seeds.
 - `replay(level, opts, commands, 0)` records no periodic hashes (`n % 0`); no shipped caller passes 0.
 - Server sort tie-break uses `localeCompare` on ASCII session ids.
 - A literal `null` JSON body on the save/leaderboard POST routes returns 500 rather than 400.

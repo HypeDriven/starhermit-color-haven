@@ -675,11 +675,27 @@ class App {
       session: this.session, level: this.level, mode: modeLabel(this.mode),
       newAchievements: newAch, rankInfo,
     });
+    this._postToPlatformBoard(this.ranked && st.terminalReason === TERMINAL.COMPLETED, sc.total);
     $('#btn-results-next').textContent = this.mode === 'journey' ? 'Next stage' : 'Play again';
     $('#btn-results-scores').hidden = !(this.ranked && this.boardId);
     announceAlert(st.terminalReason === TERMINAL.COMPLETED
       ? `Complete! Score ${sc.total}.` : 'Out of moves.');
     setTimeout(() => showScreen('results'), this.settings.reducedMotion ? 200 : 1200);
+  }
+
+  /** Signed in only: post a completed ranked round and show the platform board rank. */
+  _postToPlatformBoard(eligible, total) {
+    const line = $('#results-lb');
+    if (!line) return;
+    const seq = (this._lbSeq = (this._lbSeq || 0) + 1);
+    if (!eligible || !this.platform.hosted) { line.hidden = true; return; }
+    line.hidden = false;
+    line.textContent = PT.lbPosting;
+    this.platform.submitPlatformScore(total).then((r) => {
+      if (seq !== this._lbSeq) return;
+      line.textContent = !r.posted ? PT.lbNotPosted
+        : r.rank ? PT.lbRank.replace('{rank}', r.rank) : PT.lbPosted;
+    });
   }
 
   /** Open the leaderboard for the round just played (ranked modes only). */
