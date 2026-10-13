@@ -831,8 +831,8 @@ export class PaperRenderer {
       this._buildPost();
     }
     if (this._board) this._board.overlay.material.userData.linBlend.value = this.composer ? 1 : 0;
-    if (this.composer) this.composer.render(dt);
-    else this.renderer.render(this.scene, this.camera);
+    if (this.composer) (globalThis.GameOptions ? globalThis.GameOptions.draw(this.composer.renderer, () => this.composer.render(dt)) : this.composer.render(dt));
+    else (globalThis.GameOptions ? globalThis.GameOptions.draw(this.renderer, () => this.renderer.render(this.scene, this.camera)) : this.renderer.render(this.scene, this.camera));
   }
 
   /** Canvas size × (dpr cap · preset scale · render scale · adaptive scale). */
