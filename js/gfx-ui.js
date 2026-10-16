@@ -1,7 +1,7 @@
 /**
  * Color Haven — Settings → Graphics panel.
- * Builds the controls inside #gfx-fieldset, localizes them (the rest of the
- * game is en-US only; this panel follows navigator.language), persists to
+ * Builds the controls inside #gfx-fieldset, localizes them in the game
+ * language (js/i18n.js; relocalize() on a change), persists to
  * settings.gfx and applies every change live through renderer.setGraphics.
  */
 
@@ -113,10 +113,13 @@ export function gfxStrings(locale) { return STRINGS[locale] || STRINGS['en-US'];
  * @param {object} opts { renderer, getSaved(), save(saved) }
  */
 export function mountGraphicsPanel(root, { renderer, getSaved, save }) {
-  const locale = pickLocale((navigator.languages && navigator.languages[0]) || navigator.language);
-  const S = gfxStrings(locale);
+  // The game language (js/i18n.js) wins; relocalize() re-labels on a change.
+  const currentLocale = () => pickLocale((window.HVI18N && window.HVI18N.lang) || (navigator.languages && navigator.languages[0]) || navigator.language);
+  let locale = currentLocale();
+  let S = gfxStrings(locale);
   root.lang = locale;
   root.innerHTML = '';
+  const labels = []; // [span, () => text] for relocalize()
   const legend = document.createElement('legend');
   legend.textContent = S.legend;
   root.append(legend);
@@ -124,11 +127,12 @@ export function mountGraphicsPanel(root, { renderer, getSaved, save }) {
   grid.className = 'gfx-grid';
   root.append(grid);
 
-  const row = (labelText, control, cls = '') => {
+  const row = (labelFn, control, cls = '') => {
     const label = document.createElement('label');
     if (cls) label.className = cls;
     const span = document.createElement('span');
-    span.textContent = labelText;
+    span.textContent = labelFn();
+    labels.push([span, labelFn]);
     if (cls === 'check') label.append(control, span); else label.append(span, control);
     grid.append(label);
     return label;
@@ -143,7 +147,7 @@ export function mountGraphicsPanel(root, { renderer, getSaved, save }) {
 
   // Quality preset (keeps the historical #set-quality id).
   const quality = select('set-quality', 'preset');
-  row(S.quality, quality);
+  row(() => S.quality, quality);
 
   // Render scale.
   const scale = document.createElement('input');
@@ -155,22 +159,22 @@ export function mountGraphicsPanel(root, { renderer, getSaved, save }) {
   const scaleWrap = document.createElement('span');
   scaleWrap.className = 'gfx-scale-wrap';
   scaleWrap.append(scale, scaleOut);
-  row(S.renderScale, scaleWrap);
+  row(() => S.renderScale, scaleWrap);
 
   // One select per category.
   const catSel = {};
   for (const cat of Object.keys(CATEGORIES)) {
     const el = select('gfx-' + cat, cat);
     catSel[cat] = el;
-    row(S.cats[cat], el);
+    row(() => S.cats[cat], el);
   }
 
   const adaptive = document.createElement('input');
   adaptive.type = 'checkbox'; adaptive.id = 'gfx-adaptive'; adaptive.dataset.gfx = 'adaptive';
-  row(S.adaptive, adaptive, 'check');
+  row(() => S.adaptive, adaptive, 'check');
   const fps = document.createElement('input');
   fps.type = 'checkbox'; fps.id = 'gfx-fps'; fps.dataset.gfx = 'show_fps';
-  row(S.showFps, fps, 'check');
+  row(() => S.showFps, fps, 'check');
 
   const summary = document.createElement('p');
   summary.id = 'gfx-summary';
@@ -233,5 +237,14 @@ export function mountGraphicsPanel(root, { renderer, getSaved, save }) {
 
   renderer.onGraphicsChange(() => { if (!root.closest('[hidden]')) refresh(); });
   refresh();
-  return { refresh };
+  const relocalize = () => {
+    locale = currentLocale();
+    S = gfxStrings(locale);
+    root.lang = locale;
+    legend.textContent = S.legend;
+    note.textContent = S.postFailed;
+    for (const [span, fn] of labels) span.textContent = fn();
+    refresh();
+  };
+  return { refresh, relocalize };
 }

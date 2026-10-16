@@ -42,6 +42,7 @@ export class Platform {
     this._codeMap = null;
     this._syncListeners = [];
     this._authListeners = [];
+    this._conflictListeners = [];
     this._kvReady = false;
     this._kvLast = null;
     this._kvTimer = null;
@@ -66,6 +67,16 @@ export class Platform {
         if (!a.signedIn) { this.profile = null; this.online = false; this._setSync('offline'); }
         for (const fn of this._authListeners) { try { fn(a); } catch { /* ignore */ } }
       });
+      // Another device saved since our last load: the SDK refused this write
+      // and blocks further ones until a reload. Reload the cloud copy and hand
+      // it to the game (onConflict) to merge and save again.
+      s.on('saveconflict', () => {
+        this._setSync('saving');
+        s.loadJSON().then((remote) => {
+          if (s.saveConflicted()) { this._setSync('offline'); return; }
+          for (const fn of this._conflictListeners) { try { fn(remote); } catch { /* ignore */ } }
+        });
+      });
     }
     if (this.hosted) {
       try {
@@ -78,6 +89,8 @@ export class Platform {
   }
 
   onAuth(fn) { if (typeof fn === 'function') this._authListeners.push(fn); }
+  /** fn(remoteDoc|null) after a save conflict: the newer cloud copy, reloaded (writes allowed again). */
+  onConflict(fn) { if (typeof fn === 'function') this._conflictListeners.push(fn); }
   canSignIn() { const s = sdk(); return !!(s && s.canSignIn()); }
   signIn() { const s = sdk(); return !!(s && s.signIn()); }
   inviteLink() { return this.hosted ? sdk().inviteLink() : null; }
@@ -93,9 +106,11 @@ export class Platform {
   /* Identity: the profile nickname, 'Player <id>' fallback; never usernames. */
   profileFor(userId) {
     if (!userId || typeof userId !== 'string') return Promise.resolve('player');
-    if (!this.hosted) return Promise.resolve('Player ' + userId.slice(0, 6));
-    return sdk().profile(userId).then((p) => (p && p.displayName) || 'Player ' + userId.slice(0, 6))
-      .catch(() => 'Player ' + userId.slice(0, 6));
+    const tr = (k, v) => (window.HVI18N ? window.HVI18N.T(k, v) : k.replace('{id}', v.id));
+    const fallback = tr('Player {id}', { id: userId.slice(0, 6) });
+    if (!this.hosted) return Promise.resolve(fallback);
+    return sdk().profile(userId).then((p) => (p && p.displayName) || fallback)
+      .catch(() => fallback);
   }
 
   async fetchProfile() {

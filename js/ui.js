@@ -11,6 +11,25 @@ import { ACHIEVEMENTS, journeyStages, paletteFor, symbolFor } from './content.js
 /* DOM helpers                                                         */
 /* ------------------------------------------------------------------ */
 
+/* Localization (js/i18n.js, window.HVI18N): English source strings are the
+ * keys. T() translates now; N() only marks a string for display-time T(). */
+export function T(key, vars) {
+  if (window.HVI18N) return window.HVI18N.T(key, vars);
+  return String(key).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m));
+}
+export const N = (key) => key;
+
+/** A level's title in the game language (level data keeps the English title). */
+export function levelTitle(level) {
+  if (!level) return '';
+  const id = String(level.id || '');
+  if (id.startsWith('daily-')) return T('Daily — {date}', { date: id.slice(6) });
+  const ch = /^challenge-(moves|speed|elder)$/.exec(id);
+  if (ch) return T('Challenge — {variant}', { variant: T({ moves: N('moves'), speed: N('speed'), elder: N('elder') }[ch[1]]) });
+  if (id.startsWith('score-')) return T('Seed “{seed}”', { seed: id.slice(6) });
+  return T(level.title);
+}
+
 export const $ = (sel) => document.querySelector(sel);
 export const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -174,6 +193,33 @@ export function loadProgress() {
   }
 }
 
+/**
+ * Cloud-save conflict (another device saved first): the better of both
+ * progress records so neither device loses anything — per stage the higher
+ * best and stars, every achievement (earliest unlock), every daily day, the
+ * larger finished count, a finished tutorial; this device's guest id.
+ */
+export function mergeProgress(local, remote) {
+  const base = () => ({ v: 2, journey: {}, achievements: {}, dailyDays: [], gamesPlayed: 0, tutorialDone: false });
+  const a = Object.assign(base(), local || {});
+  const b = Object.assign(base(), remote || {});
+  const journey = { ...b.journey };
+  for (const [id, j] of Object.entries(a.journey)) {
+    const o = journey[id];
+    journey[id] = !o ? j : { best: Math.max(j.best || 0, o.best || 0), stars: Math.max(j.stars || 0, o.stars || 0) };
+  }
+  const achievements = { ...b.achievements };
+  for (const [k, at] of Object.entries(a.achievements)) {
+    achievements[k] = achievements[k] && String(achievements[k]) < String(at) ? achievements[k] : at;
+  }
+  return Object.assign({}, b, a, {
+    journey, achievements,
+    dailyDays: [...new Set([...b.dailyDays, ...a.dailyDays])].sort(),
+    gamesPlayed: Math.max(a.gamesPlayed || 0, b.gamesPlayed || 0),
+    tutorialDone: !!(a.tutorialDone || b.tutorialDone),
+  });
+}
+
 export function saveProgress(p) {
   try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch { /* quota */ }
 }
@@ -247,13 +293,13 @@ export function renderPalette(tray, palette, state, remaining, onSelect) {
     const btn = el('button', {
       class: 'pal-btn',
       type: 'button',
-      'aria-label': `Color ${i + 1}, ${p.name}, ${remaining[i]} regions left`,
+      'aria-label': T(remaining[i] === 1 ? 'Color {n}, {name}, {left} region left' : 'Color {n}, {name}, {left} regions left', { n: i + 1, name: T(p.name), left: remaining[i] }),
       'aria-pressed': state && state.selected === i ? 'true' : 'false',
     });
     btn.append(
       el('span', { class: 'pal-num', text: String(i + 1) }),
       el('span', { class: 'pal-sym', text: p.symbol }),
-      el('span', { class: 'pal-count', text: remaining[i] > 0 ? String(remaining[i]) : 'done' }),
+      el('span', { class: 'pal-count', text: remaining[i] > 0 ? String(remaining[i]) : T('done') }),
       el('span', { class: 'pal-swatch' }),
     );
     btn.querySelector('.pal-swatch').style.background = '#' + p.hex.toString(16).padStart(6, '0');
@@ -282,9 +328,9 @@ export function updateHUD(session, level) {
   $('#stat-hints').textContent = String(st.hints);
   const movesEl = $('#objective-moves');
   if (st.remainingMoves != null) {
-    movesEl.textContent = `Moves left: ${st.remainingMoves}`;
+    movesEl.textContent = T('Moves left: {n}', { n: st.remainingMoves });
   } else {
-    movesEl.textContent = `Par time: ${formatMs(level.par.timeMs)}`;
+    movesEl.textContent = T('Par time: {time}', { time: formatMs(level.par.timeMs) });
   }
   const sc = session.scoreBreakdown;
   const prev = $('#score-preview');
@@ -313,19 +359,19 @@ export function renderResults({ session, level, mode, newAchievements, rankInfo 
   const st = session.state;
   const sc = session.scoreBreakdown;
   const complete = st.terminalReason === 'completed';
-  $('#results-h').textContent = complete ? 'Illustration complete' : 'Round over';
+  $('#results-h').textContent = complete ? T('Illustration complete') : T('Round over');
   const art = $('#results-art');
   if (art) art.hidden = !complete || art.dataset.failed === '1';
   $('#results-sub').textContent =
-    `${level.title} · ${mode}` +
-    (complete ? ` · finished in ${formatMs(st.elapsedMs)}` : ' · moves exhausted');
+    `${levelTitle(level)} · ${mode}` +
+    (complete ? ' · ' + T('finished in {time}', { time: formatMs(st.elapsedMs) }) : ' · ' + T('moves exhausted'));
   const rows = [
-    ['Regions filled', `${st.filled} / ${st.total}`, sc.cells],
-    ['Completion', complete ? 'yes' : '—', sc.completion],
-    ['Accuracy', `${st.invalid} slip${st.invalid === 1 ? '' : 's'}`, sc.accuracy],
-    ['Pace', formatMs(st.elapsedMs), sc.timeBonus],
-    ['Hints used', String(st.hints), sc.hintPenalty],
-    ['Undos', String(st.undos), sc.undoPenalty],
+    [T('Regions filled'), `${st.filled} / ${st.total}`, sc.cells],
+    [T('Completion'), complete ? T('yes') : '—', sc.completion],
+    [T('Accuracy'), T(st.invalid === 1 ? '{n} slip' : '{n} slips', { n: st.invalid }), sc.accuracy],
+    [T('Pace'), formatMs(st.elapsedMs), sc.timeBonus],
+    [T('Hints used'), String(st.hints), sc.hintPenalty],
+    [T('Undos'), String(st.undos), sc.undoPenalty],
   ];
   const tbody = $('#results-table tbody');
   tbody.textContent = '';
@@ -335,12 +381,12 @@ export function renderResults({ session, level, mode, newAchievements, rankInfo 
     ]));
   }
   tbody.append(el('tr', {}, [
-    el('td', { text: 'Total' }), el('td', {}), el('td', { class: 'total', text: String(sc.total) }),
+    el('td', { text: T('Total') }), el('td', {}), el('td', { class: 'total', text: String(sc.total) }),
   ]));
   const ach = $('#results-achievements');
   ach.textContent = '';
   for (const a of newAchievements || []) {
-    ach.append(el('div', { class: 'ach-item', text: `Achievement unlocked: ${a.name} — ${a.desc}` }));
+    ach.append(el('div', { class: 'ach-item', text: T('Achievement unlocked: {name} — {desc}', { name: T(a.name), desc: T(a.desc) }) }));
   }
   $('#results-compare').textContent = rankInfo || '';
 }
@@ -358,7 +404,8 @@ export function renderJourney(grid, progress, onPick) {
     const btn = el('button', {
       class: 'stage-btn' + (st.mastery ? ' mastery' : '') + (!unlocked && !done ? ' locked' : ''),
       type: 'button',
-      'aria-label': `Stage ${st.n}, ${st.title}${done ? `, best ${done.best}, ${done.stars} stars` : unlocked ? '' : ', locked'}`,
+      'aria-label': done ? T('Stage {n}, {title}, best {best}, {stars} stars', { n: st.n, title: T(st.title), best: done.best, stars: done.stars })
+        : unlocked ? T('Stage {n}, {title}', { n: st.n, title: T(st.title) }) : T('Stage {n}, {title}, locked', { n: st.n, title: T(st.title) }),
     });
     btn.append(
       el('span', { class: 'stage-num', text: String(st.n) }),
@@ -379,13 +426,14 @@ export function renderHelp(container, keyLabel) {
   container.textContent = '';
   const k = keyLabel || ((a) => ({ left: '←', right: '→', up: '↑', down: '↓', fill: 'Enter / Space', undo: 'U', hint: 'H', recenter: 'C', pause: 'P', cancel: 'Esc' }[a] || a));
   const cards = [
-    { h: 'The loop', ps: ['Pick a numbered color in the tray.', 'Fill every region showing that number.', 'Finish the picture — there is no timer and no way to lose.'] },
-    { h: 'Mouse / touch', ps: ['Tap a region to fill it with the selected color.', 'Hover previews the result before you commit.', 'Drag to pan nothing — the board always fits.'] },
-    { h: 'Keyboard', ps: [`${k('left')} ${k('right')} ${k('up')} ${k('down')} — move between regions`, `${k('fill')} — fill focused region`,
-      `${k('color1')}–${k('color8')} — pick a color`, `${k('undo')} — undo, ${k('hint')} — hint, ${k('recenter')} — re-center camera, ${k('cancel')} / ${k('pause')} — pause`] },
-    { h: 'Gamepad', ps: ['D-pad / left stick — move focus', 'A — fill, X — undo, Y — hint', 'Start — pause'] },
-    { h: 'Scoring', ps: ['Regions filled and accuracy earn points.', 'Finishing quickly adds a pace bonus.', 'Hints and undos cost a little. Slips cost more.'] },
-    { h: 'Symbols', ps: ['Every color also has a symbol (● ▲ ■ ◆ …), so numbers never rely on color alone. A color-vision-safe palette is in Settings.'] },
+    { h: T('The loop'), ps: [T('Pick a numbered color in the tray.'), T('Fill every region showing that number.'), T('Finish the picture — there is no timer and no way to lose.')] },
+    { h: T('Mouse / touch'), ps: [T('Tap a region to fill it with the selected color.'), T('Hover previews the result before you commit.'), T('Drag to pan nothing — the board always fits.')] },
+    { h: T('Keyboard'), ps: [T('{keys} — move between regions', { keys: `${k('left')} ${k('right')} ${k('up')} ${k('down')}` }), T('{key} — fill focused region', { key: k('fill') }),
+      T('{from}–{to} — pick a color', { from: k('color1'), to: k('color8') }),
+      T('{undo} — undo, {hint} — hint, {recenter} — re-center camera, {cancel} / {pause} — pause', { undo: k('undo'), hint: k('hint'), recenter: k('recenter'), cancel: k('cancel'), pause: k('pause') })] },
+    { h: T('Gamepad'), ps: [T('D-pad / left stick — move focus'), T('A — fill, X — undo, Y — hint'), T('Start — pause')] },
+    { h: T('Scoring'), ps: [T('Regions filled and accuracy earn points.'), T('Finishing quickly adds a pace bonus.'), T('Hints and undos cost a little. Slips cost more.')] },
+    { h: T('Symbols'), ps: [T('Every color also has a symbol (● ▲ ■ ◆ …), so numbers never rely on color alone. A color-vision-safe palette is in Settings.')] },
   ];
   for (const c of cards) {
     const node = el('div', { class: 'help-card' }, [el('h3', { text: c.h })]);
@@ -401,13 +449,13 @@ export function renderHelp(container, keyLabel) {
 export function renderScores(tbody, entries) {
   tbody.textContent = '';
   if (!entries.length) {
-    tbody.append(el('tr', {}, [el('td', { colspan: '5', text: 'No scores yet — be the first.' })]));
+    tbody.append(el('tr', {}, [el('td', { colspan: '5', text: T('No scores yet — be the first.') })]));
     return;
   }
   entries.slice(0, 20).forEach((e2, i) => {
     tbody.append(el('tr', {}, [
       el('td', { text: String(i + 1) }),
-      el('td', { text: e2.name || 'Guest' }),
+      el('td', { text: e2.name || T('Guest') }),
       el('td', { text: String(e2.score) }),
       el('td', { text: formatMs(e2.elapsedMs || 0) }),
       el('td', { text: String(e2.invalid || 0) }),

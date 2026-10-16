@@ -47,13 +47,19 @@ export function hostedEnv(slug, extra) {
   const calls = [];
   let saved = null;
   let settings = { seeded: { fromPlatform: true } };
+  let refuse = false;
   const fetchStub = async (url, init = {}) => {
     const method = init.method || 'GET';
     calls.push({ url: String(url), method, init });
     const path = String(url);
     if (path === `/api/v1/users/${UID}/profile`) return resp(200, { nickname: 'Ada' });
+    if (path === `/api/v1/me/cloud-saves/${encodeURIComponent('game:' + slug)}/info`) {
+      return resp(200, saved ? { exists: true, etag: '"v' + calls.length + '"' } : { exists: false });
+    }
     if (path === `/api/v1/me/cloud-saves/${encodeURIComponent('game:' + slug)}`) {
-      if (method === 'PUT') { saved = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return resp(204, null); }
+      // refuseNextPut: the next write loses to "another device" (412, conditional write refused).
+      if (method === 'PUT' && refuse) { refuse = false; return resp(412, { error: 'precondition-failed' }); }
+      if (method === 'PUT') { saved = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return resp(200, { etag: '"v' + calls.length + '"' }); }
       return saved ? resp(200, null, new Uint8Array(saved)) : resp(404, null);
     }
     if (path === `/api/v1/games/${slug}/settings`) {
@@ -64,7 +70,7 @@ export function hostedEnv(slug, extra) {
     if (extra) { const r = await extra(path, method, init); if (r) return r; }
     return resp(404, null);
   };
-  return { calls, fetchStub, get saved() { return saved; }, get settings() { return settings; } };
+  return { calls, fetchStub, get saved() { return saved; }, get settings() { return settings; }, set refuseNextPut(v) { refuse = !!v; } };
 }
 
 function installDom(win) {

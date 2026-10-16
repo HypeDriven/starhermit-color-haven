@@ -79,3 +79,36 @@ test('standalone: no token, no network', async () => {
     assert.deepEqual(st.calls, []);
   } finally { st.restore(); }
 });
+
+test('save-conflict merge keeps the better of both devices', async () => {
+  // ui.js only touches window at import (resize listener).
+  globalThis.window = globalThis.window || { addEventListener() {} };
+  const { mergeProgress } = await import('../js/ui.js');
+  const m = mergeProgress(
+    { journey: { 'journey-1': { best: 900, stars: 1 } }, achievements: { first_completion: '2026-10-02T00:00:00Z' }, dailyDays: ['2026-10-01'], gamesPlayed: 3, tutorialDone: true, playerId: 'abc' },
+    { journey: { 'journey-1': { best: 400, stars: 3 }, 'journey-2': { best: 100, stars: 1 } }, achievements: { first_completion: '2026-10-01T00:00:00Z', long_road: 'x' }, dailyDays: ['2026-10-02'], gamesPlayed: 7 });
+  assert.deepEqual(m.journey['journey-1'], { best: 900, stars: 3 });
+  assert.ok(m.journey['journey-2']);
+  assert.equal(m.achievements.first_completion, '2026-10-01T00:00:00Z');
+  assert.deepEqual(m.dailyDays, ['2026-10-01', '2026-10-02']);
+  assert.equal(m.gamesPlayed, 7);
+  assert.equal(m.tutorialDone, true);
+  assert.equal(m.playerId, 'abc');
+});
+
+test('a refused cloud write reloads the newer copy for the game to merge', async () => {
+  const { sdk, env } = installHosted(SLUG);
+  const p = new Platform();
+  await p.init();
+  assert.equal(await p.loadCloud(), null);
+  p.saveCloud({ progress: { gamesPlayed: 7 } });
+  assert.equal(await p._flushSave(), true, 'other device saved first');
+  const reloaded = new Promise((resolve) => p.onConflict(resolve));
+  env.refuseNextPut = true;
+  p.saveCloud({ progress: { gamesPlayed: 2 } });
+  assert.equal(await p._flushSave(), false, 'stale write refused');
+  assert.deepEqual(await reloaded, { progress: { gamesPlayed: 7 } });
+  assert.equal(sdk.saveConflicted(), false);
+  p.saveCloud({ progress: { gamesPlayed: 7, merged: true } });
+  assert.equal(await p._flushSave(), true, 'merged doc saved');
+});

@@ -20,15 +20,16 @@ import {
   $, $$, el, toast, banner, announce, announceAlert, formatMs,
   showScreen, closeScreen, clearScreens, currentScreen,
   loadSettings, saveSettings, applySettingsClasses,
-  loadProgress, saveProgress, recordCompletion,
+  loadProgress, saveProgress, recordCompletion, mergeProgress,
   journeyProgressSummary, nextJourneyStage,
   renderPalette, updateHUD, setObjective, setTopbarStatus,
-  renderResults, renderJourney, renderHelp, renderScores,
+  renderResults, renderJourney, renderHelp, renderScores, T, N, levelTitle,
 } from './ui.js';
 import { paletteFor } from './content.js';
 import { platformStrings } from './platform-strings.js';
 
-const PT = platformStrings(typeof navigator !== 'undefined' ? navigator.language : 'en-US'); // StarHermit UI strings
+const curLang = () => (window.HVI18N && window.HVI18N.lang) || (typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+let PT = platformStrings(curLang()); // StarHermit UI strings in the game language
 
 // Short visual confirmation on any screen (the HUD toast lives in the round view).
 function pageToast(text) {
@@ -96,6 +97,14 @@ class App {
         })(), new Promise((r) => setTimeout(r, 3000))]);
       } catch { /* local save stays authoritative */ }
     }
+    // Save conflict: merge the newer cloud progress into this device's and
+    // save the merge (mergeProgress keeps the better of both).
+    this.platform.onConflict((remote) => {
+      if (remote && remote.progress) this.progress = mergeProgress(this.progress, remote.progress);
+      saveProgress(this.progress);
+      this._pushProgress();
+      if (this.renderer) this._updateTitle();
+    });
     await this.platform.loadBindings();
     this.platform.onAuth((a) => {
       if (a.signedIn) return;
@@ -227,30 +236,32 @@ class App {
       const s = wrap.snap.state;
       btnContinue.hidden = false;
       btnContinue.querySelector('.btn-sub').textContent =
-        `${wrap.snap.level.title} · ${s.filled}/${s.total} regions`;
+        T('{title} · {filled}/{total} regions', { title: levelTitle(wrap.snap.level), filled: s.filled, total: s.total });
     } else {
       btnContinue.hidden = true;
     }
     const jp = journeyProgressSummary(this.progress);
-    $('#journey-summary').textContent = `${jp.done}/${jp.total} stages · ${jp.stars}★`;
+    $('#journey-summary').textContent = T('{done}/{total} stages · {stars}★', jp);
     const info = dailyInfo(this.platform.now());
-    $('#daily-summary').textContent = `Today ${info.date} · tier ${info.tier}`;
+    $('#daily-summary').textContent = T('Today {date} · tier {tier}', { date: info.date, tier: info.tier });
     const signIn = $('#btn-title-signin'), invite = $('#btn-title-invite');
     signIn.textContent = PT.signIn; signIn.hidden = !this.platform.canSignIn();
     invite.textContent = PT.invite; invite.hidden = !this.platform.hosted;
     if (this.platform.hosted) {
       const name = this.platform.profile ? this.platform.profile.name : '…';
-      const syncTxt = this.platform.sync === 'synced' ? 'progress synced'
-        : this.platform.sync === 'saving' ? 'saving…'
-        : 'cloud sync pending';
-      $('#profile-line').textContent = `Playing as ${name} · ${syncTxt}`;
+      const syncTxt = this.platform.sync === 'synced' ? T('progress synced')
+        : this.platform.sync === 'saving' ? T('saving…')
+        : T('cloud sync pending');
+      $('#profile-line').textContent = T('Playing as {name} · {sync}', { name, sync: syncTxt });
     } else {
-      const guest = 'Guest ' + (this.progress.playerId || (this.progress.playerId = String(hashString(Math.random() + '').toString(16).slice(0, 6))));
-      saveProgress(this.progress);
-      $('#profile-line').textContent = `Local play · ${guest}`;
+      if (!this.progress.playerId) {
+        this.progress.playerId = String(hashString(Math.random() + '').toString(16).slice(0, 6));
+        saveProgress(this.progress);
+      }
+      $('#profile-line').textContent = T('Local play · Guest {id}', { id: this.progress.playerId });
     }
     const unlocked = Object.keys(this.progress.achievements).length;
-    $('#achievement-line').textContent = `Achievements: ${unlocked}/5 · Illustrations finished: ${this.progress.gamesPlayed}`;
+    $('#achievement-line').textContent = T('Achievements: {n}/5 · Illustrations finished: {done}', { n: unlocked, done: this.progress.gamesPlayed });
   }
 
   // Cloud mirror: queued (debounced) at progress-write points, never from the
@@ -304,59 +315,64 @@ class App {
     }
   }
 
+  // Setup screens: `keep` re-renders the current choices (language change).
   _setupDaily() {
     const info = dailyInfo(this.platform.now());
     const t = tierSpec(info.tier);
     this._setupConfig = { mode: 'daily', info };
-    this._setupShell('Daily challenge', `
-      <div><dt>Date (UTC)</dt><dd>${info.date}</dd></div>
-      <div><dt>Board</dt><dd>${t.size}×${t.size}, ${t.colors} colors</dd></div>
-      <div><dt>Move limit</dt><dd>${Math.ceil(t.size * t.size * 1.2)}</dd></div>
-      <div><dt>Ruleset</dt><dd>Hints + undo allowed</dd></div>
-      <div><dt>Ranked</dt><dd>Yes — same seed for everyone today</dd></div>
-      <div><dt>Expected</dt><dd>~${Math.round(t.size * t.size * t.timePerCellMs / 60000)} min</dd></div>
+    this._setupShell(T('Daily challenge'), `
+      <div><dt>${esc(T('Date (UTC)'))}</dt><dd>${info.date}</dd></div>
+      <div><dt>${esc(T('Board'))}</dt><dd>${esc(T('{w}×{h}, {n} colors', { w: t.size, h: t.size, n: t.colors }))}</dd></div>
+      <div><dt>${esc(T('Move limit'))}</dt><dd>${Math.ceil(t.size * t.size * 1.2)}</dd></div>
+      <div><dt>${esc(T('Ruleset'))}</dt><dd>${esc(T('Hints + undo allowed'))}</dd></div>
+      <div><dt>${esc(T('Ranked'))}</dt><dd>${esc(T('Yes — same seed for everyone today'))}</dd></div>
+      <div><dt>${esc(T('Expected'))}</dt><dd>${esc(T('~{n} min', { n: Math.round(t.size * t.size * t.timePerCellMs / 60000) }))}</dd></div>
     `);
   }
 
-  _setupPractice() {
-    this._setupConfig = { mode: 'practice', tier: 2, hints: true, undo: true };
-    const opts = TIERS.map(t => `<option value="${t.tier}" ${t.tier === 2 ? 'selected' : ''}>${t.label} — ${t.size}×${t.size}, ${t.colors} colors</option>`).join('');
-    this._setupShell('Practice', `
-      <div><dt>Ranked</dt><dd>No — relax</dd></div>
-      <div><dt>Restart / undo</dt><dd>Always available</dd></div>
+  _setupPractice(keep) {
+    if (!keep) this._setupConfig = { mode: 'practice', tier: 2, hints: true, undo: true };
+    const c = this._setupConfig;
+    const opts = TIERS.map(t => `<option value="${t.tier}" ${t.tier === c.tier ? 'selected' : ''}>${esc(T('{tier} — {w}×{h}, {n} colors', { tier: T(t.label), w: t.size, h: t.size, n: t.colors }))}</option>`).join('');
+    this._setupShell(T('Practice'), `
+      <div><dt>${esc(T('Ranked'))}</dt><dd>${esc(T('No — relax'))}</dd></div>
+      <div><dt>${esc(T('Restart / undo'))}</dt><dd>${esc(T('Always available'))}</dd></div>
     `, `
-      <label>Difficulty <select id="setup-tier">${opts}</select></label>
-      <label><input type="checkbox" id="setup-hints" checked> Allow hints</label>
-      <label><input type="checkbox" id="setup-undo" checked> Allow undo</label>
+      <label>${esc(T('Difficulty'))} <select id="setup-tier">${opts}</select></label>
+      <label><input type="checkbox" id="setup-hints" ${c.hints ? 'checked' : ''}> ${esc(T('Allow hints'))}</label>
+      <label><input type="checkbox" id="setup-undo" ${c.undo ? 'checked' : ''}> ${esc(T('Allow undo'))}</label>
     `);
     $('#setup-tier').addEventListener('change', e => { this._setupConfig.tier = +e.target.value; });
     $('#setup-hints').addEventListener('change', e => { this._setupConfig.hints = e.target.checked; });
     $('#setup-undo').addEventListener('change', e => { this._setupConfig.undo = e.target.checked; });
   }
 
-  _setupChallenge() {
-    this._setupConfig = { mode: 'challenge', variant: 'moves' };
-    this._setupShell('Challenge', `
-      <div><dt>Ranked</dt><dd>Yes — per-variant boards</dd></div>
-      <div><dt>Assists</dt><dd>Depends on variant</dd></div>
-    `, `
-      <label><input type="radio" name="chvar" value="moves" checked> Strict ledger — tier 3, only 5% spare moves, no hints</label>
-      <label><input type="radio" name="chvar" value="speed"> Steady hands — tier 3, beat the par clock, no undo</label>
-      <label><input type="radio" name="chvar" value="elder"> Elder trial — tier 5, no hints, no undo</label>
-    `);
+  _setupChallenge(keep) {
+    if (!keep) this._setupConfig = { mode: 'challenge', variant: 'moves' };
+    const v = this._setupConfig.variant;
+    const radio = (value, text) => `<label><input type="radio" name="chvar" value="${value}" ${v === value ? 'checked' : ''}> ${esc(text)}</label>`;
+    this._setupShell(T('Challenge'), `
+      <div><dt>${esc(T('Ranked'))}</dt><dd>${esc(T('Yes — per-variant boards'))}</dd></div>
+      <div><dt>${esc(T('Assists'))}</dt><dd>${esc(T('Depends on variant'))}</dd></div>
+    `, [
+      radio('moves', T('Strict ledger — tier 3, only 5% spare moves, no hints')),
+      radio('speed', T('Steady hands — tier 3, beat the par clock, no undo')),
+      radio('elder', T('Elder trial — tier 5, no hints, no undo')),
+    ].join(''));
     $$('#setup-body input[name="chvar"]').forEach(r =>
       r.addEventListener('change', () => { this._setupConfig.variant = r.value; }));
   }
 
-  _setupScore() {
-    this._setupConfig = { mode: 'score', tier: 3, seed: 'gallery-' + String(hashString(String(Date.now())) % 100000) };
-    const opts = TIERS.map(t => `<option value="${t.tier}" ${t.tier === 3 ? 'selected' : ''}>${t.label} — ${t.size}×${t.size}</option>`).join('');
-    this._setupShell('Score chase', `
-      <div><dt>Ranked</dt><dd>Yes — one board per seed</dd></div>
-      <div><dt>Fair play</dt><dd>Same seed + ruleset for every entry</dd></div>
+  _setupScore(keep) {
+    if (!keep) this._setupConfig = { mode: 'score', tier: 3, seed: 'gallery-' + String(hashString(String(Date.now())) % 100000) };
+    const c = this._setupConfig;
+    const opts = TIERS.map(t => `<option value="${t.tier}" ${t.tier === c.tier ? 'selected' : ''}>${esc(T('{tier} — {w}×{h}', { tier: T(t.label), w: t.size, h: t.size }))}</option>`).join('');
+    this._setupShell(T('Score chase'), `
+      <div><dt>${esc(T('Ranked'))}</dt><dd>${esc(T('Yes — one board per seed'))}</dd></div>
+      <div><dt>${esc(T('Fair play'))}</dt><dd>${esc(T('Same seed + ruleset for every entry'))}</dd></div>
     `, `
-      <label>Seed <input type="text" id="setup-seed" value="${this._setupConfig.seed}" maxlength="40"></label>
-      <label>Size <select id="setup-score-tier">${opts}</select></label>
+      <label>${esc(T('Seed'))} <input type="text" id="setup-seed" value="${esc(c.seed)}" maxlength="40"></label>
+      <label>${esc(T('Size'))} <select id="setup-score-tier">${opts}</select></label>
     `);
     $('#setup-seed').addEventListener('input', e => { this._setupConfig.seed = e.target.value.trim() || 'gallery'; });
     $('#setup-score-tier').addEventListener('change', e => { this._setupConfig.tier = +e.target.value; });
@@ -451,14 +467,12 @@ class App {
 
     this.session.onChange((state, events, result) => this._onSessionChange(state, events, result));
 
-    setObjective(level.title, `${level.tierLabel} · ${level.w}×${level.h} · ${this.palette.length} colors` +
-      (level.mechanics.moveLimit ? ` · move limit ${level.mechanics.moveLimit}` : ''));
-    setTopbarStatus(`${modeLabel(mode)} — ${level.title}`);
+    this._renderObjective();
     $('#btn-pause').hidden = false;
     this._renderTray();
     updateHUD(this.session, level);
 
-    banner(mode === 'learn' ? null : `Fill every numbered region. No timer, no losing.`);
+    banner(mode === 'learn' ? null : T('Fill every numbered region. No timer, no losing.'));
     if (mode !== 'learn') setTimeout(() => banner(null), 2600);
 
     this.audio.startAmbience();
@@ -475,7 +489,16 @@ class App {
       }
     }, 500);
     this._saveSnapshot();
-    announce(`Started ${level.title}. ${this.palette.length} colors. Pick a color in the tray.`);
+    announce(T('Started {title}. {n} colors. Pick a color in the tray.', { title: levelTitle(level), n: this.palette.length }));
+  }
+
+  /** Objective card + top bar for the current round (re-run on a language change). */
+  _renderObjective() {
+    const level = this.level;
+    if (!level) return;
+    setObjective(levelTitle(level), `${T(level.tierLabel)} · ${level.w}×${level.h} · ${T('{n} colors', { n: this.palette.length })}` +
+      (level.mechanics.moveLimit ? ' · ' + T('move limit {n}', { n: level.mechanics.moveLimit }) : ''));
+    setTopbarStatus(`${modeLabel(this.mode)} — ${levelTitle(level)}`);
   }
 
   _teardownRound() {
@@ -513,14 +536,14 @@ class App {
     if (!this.session || this.session.isOver) return;
     this.session.setPaused(true);
     showScreen('pause');
-    announce('Paused');
+    announce(T('Paused'));
   }
 
   resumeGame(reason) {
     if (!this.session) return;
     closeScreen();
     this.session.setPaused(false);
-    announce('Resumed');
+    announce(T('Resumed'));
     $('#canvas-host').focus();
   }
 
@@ -564,9 +587,9 @@ class App {
     this.startGame(session.level, session.mode, {
       ranked: !!wrap.ranked, boardId: wrap.boardId || null, session,
     });
-    banner(`Resumed — ${session.state.filled} of ${session.state.total} regions already filled.`);
+    banner(T('Resumed — {filled} of {total} regions already filled.', { filled: session.state.filled, total: session.state.total }));
     setTimeout(() => banner(null), 2600);
-    announce('Round resumed.');
+    announce(T('Round resumed.'));
   }
 
   /* ---------------------------------------------------------------- */
@@ -584,7 +607,7 @@ class App {
       switch (ev.type) {
         case 'select':
           this.audio.select();
-          announce(`Color ${ev.color + 1}, ${this.palette[ev.color].name} selected`);
+          announce(T('Color {n}, {name} selected', { n: ev.color + 1, name: T(this.palette[ev.color].name) }));
           break;
         case 'fill':
           this.audio.fill();
@@ -593,7 +616,7 @@ class App {
           break;
         case 'hint':
           this.audio.hint();
-          toast('Hint placed a region for you (−25 pts)');
+          toast(T('Hint placed a region for you (−25 pts)'));
           this._checkColorComplete(state, ev.color);
           break;
         case 'undo':
@@ -603,7 +626,7 @@ class App {
           this.audio.invalid();
           this._haptic([30, 40, 30]);
           const need = this.palette[ev.need];
-          const msg = `That region needs color ${ev.need + 1} (${need.name})`;
+          const msg = T('That region needs color {n} ({name})', { n: ev.need + 1, name: T(need.name) });
           toast(msg);
           announceAlert(msg);
           break;
@@ -628,7 +651,7 @@ class App {
     const rem = listLegalActions(state, this.level).fillableFor;
     if (rem[color] === 0) {
       this.audio.colorComplete();
-      announce(`Color ${color + 1}, ${this.palette[color].name} complete`);
+      announce(T('Color {n}, {name} complete', { n: color + 1, name: T(this.palette[color].name) }));
     }
   }
 
@@ -648,7 +671,7 @@ class App {
     if (this.ranked && st.terminalReason === TERMINAL.COMPLETED) {
       const displayName = this.platform.hosted && this.platform.profile
         ? this.platform.profile.name
-        : 'Guest ' + (this.progress.playerId || 'anon');
+        : 'Guest ' + (this.progress.playerId || 'anon'); // stored board name (not localized)
       const entry = {
         name: displayName,
         playerId: this.platform.hosted ? this.platform.userId : undefined,
@@ -662,25 +685,39 @@ class App {
         assists: { hints: st.mechanics.hints, undo: st.mechanics.undo },
         envelope: this.session.envelope(),
       };
-      const res = await this.platform.submitScore(this.boardId, entry);
-      if (res && res.ok) {
-        rankInfo = `Leaderboard rank: #${res.rank}${res.local ? ' (local board)' : ''}`;
-      } else {
-        rankInfo = 'Score saved locally; board submission unavailable.';
-      }
+      rankInfo = await this.platform.submitScore(this.boardId, entry) || {};
     }
     this.platform.track('round_end', { mode: this.mode, reason: st.terminalReason });
 
-    renderResults({
-      session: this.session, level: this.level, mode: modeLabel(this.mode),
-      newAchievements: newAch, rankInfo,
-    });
+    this._results = { session: this.session, level: this.level, mode: this.mode, newAchievements: newAch, rankRes: rankInfo || null };
+    this._lb = null;
+    this._renderResults();
     this._postToPlatformBoard(this.ranked && st.terminalReason === TERMINAL.COMPLETED, sc.total);
-    $('#btn-results-next').textContent = this.mode === 'journey' ? 'Next stage' : 'Play again';
     $('#btn-results-scores').hidden = !(this.ranked && this.boardId);
     announceAlert(st.terminalReason === TERMINAL.COMPLETED
-      ? `Complete! Score ${sc.total}.` : 'Out of moves.');
+      ? T('Complete! Score {n}.', { n: sc.total }) : T('Out of moves.'));
     setTimeout(() => showScreen('results'), this.settings.reducedMotion ? 200 : 1200);
+  }
+
+  /** Results screen from the stored round result (re-run on a language change). */
+  _renderResults() {
+    const r = this._results;
+    if (!r) return;
+    const res = r.rankRes;
+    const rankInfo = !res ? ''
+      : res.ok ? (res.local ? T('Leaderboard rank: #{rank} (local board)', { rank: res.rank }) : T('Leaderboard rank: #{rank}', { rank: res.rank }))
+        : T('Score saved locally; board submission unavailable.');
+    renderResults({ session: r.session, level: r.level, mode: modeLabel(r.mode), newAchievements: r.newAchievements, rankInfo });
+    $('#btn-results-next').textContent = r.mode === 'journey' ? T('Next stage') : T('Play again');
+    this._renderLbLine();
+  }
+
+  _renderLbLine() {
+    const line = $('#results-lb');
+    if (!line || !this._lb) return;
+    const r = this._lb;
+    line.textContent = r === 'posting' ? PT.lbPosting : !r.posted ? PT.lbNotPosted
+      : r.rank ? PT.lbRank.replace('{rank}', r.rank) : PT.lbPosted;
   }
 
   /** Signed in only: post a completed ranked round and show the platform board rank. */
@@ -688,13 +725,14 @@ class App {
     const line = $('#results-lb');
     if (!line) return;
     const seq = (this._lbSeq = (this._lbSeq || 0) + 1);
-    if (!eligible || !this.platform.hosted) { line.hidden = true; return; }
+    if (!eligible || !this.platform.hosted) { line.hidden = true; this._lb = null; return; }
     line.hidden = false;
-    line.textContent = PT.lbPosting;
+    this._lb = 'posting';
+    this._renderLbLine();
     this.platform.submitPlatformScore(total).then((r) => {
       if (seq !== this._lbSeq) return;
-      line.textContent = !r.posted ? PT.lbNotPosted
-        : r.rank ? PT.lbRank.replace('{rank}', r.rank) : PT.lbPosted;
+      this._lb = r;
+      this._renderLbLine();
     });
   }
 
@@ -702,10 +740,15 @@ class App {
   async _showBoard() {
     if (!this.boardId) return;
     this.audio.uiTick();
-    const entries = await this.platform.fetchBoard(this.boardId);
-    $('#scores-sub').textContent = `${this.boardId} · ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`;
-    renderScores($('#scores-table tbody'), entries);
+    this._boardEntries = await this.platform.fetchBoard(this.boardId);
+    this._renderBoard();
     showScreen('scores');
+  }
+
+  _renderBoard() {
+    const entries = this._boardEntries || [];
+    $('#scores-sub').textContent = `${this.boardId} · ${T(entries.length === 1 ? '{n} entry' : '{n} entries', { n: entries.length })}`;
+    renderScores($('#scores-table tbody'), entries);
   }
 
   _resultsNext() {
@@ -720,7 +763,7 @@ class App {
         this.settings.tutorialDone = true;
         saveSettings(this.settings);
         this._toTitle();
-        toast('Tutorial complete — Journey is ready.');
+        toast(T('Tutorial complete — Journey is ready.'));
       }
     } else {
       this._toTitle();
@@ -737,10 +780,19 @@ class App {
     if (!t) return;
     const step = t.lesson.steps[t.stepIdx];
     if (!step) return;
-    banner(step.text + (step.require == null ? '  (tap this message to continue)' : ''));
+    this._tutorialBanner();
     this._setBannerAction(step.require == null ? () => this._tutorialAdvance() : null);
     if (t.stepIdx > 0) this.audio.tutorialStep(); // step 0 lands with the board-unfold cue
-    announce(step.text);
+    announce(T(step.text));
+  }
+
+  /** The current lesson step's banner text (re-run on a language change). */
+  _tutorialBanner() {
+    const t = this.tutorial;
+    const step = t && t.lesson.steps[t.stepIdx];
+    if (t && t.done) { banner(T('Lesson complete! Tap to continue.')); return; }
+    if (!step) return;
+    banner(T(step.text) + (step.require == null ? '  ' + T('(tap this message to continue)') : ''));
   }
 
   /**
@@ -783,7 +835,8 @@ class App {
           // The closing note was already acknowledged — don't ask twice.
           this._resultsNext();
         } else {
-          banner('Lesson complete! Tap to continue.');
+          t.done = true;
+          banner(T('Lesson complete! Tap to continue.'));
           this._setBannerAction(() => this._resultsNext());
         }
       }
@@ -914,8 +967,8 @@ class App {
     this.focusCell = y * w + x;
     this.renderer.setFocusCell(this.focusCell);
     const target = this.level.targets[this.focusCell];
-    announce(`Region ${this.focusCell + 1}, needs color ${target + 1} ${this.palette[target].name}` +
-      (this.session.state.fills[this.focusCell] ? ', filled' : ''));
+    announce(T(this.session.state.fills[this.focusCell] ? 'Region {n}, needs color {color} {name}, filled' : 'Region {n}, needs color {color} {name}',
+      { n: this.focusCell + 1, color: target + 1, name: T(this.palette[target].name) }));
   }
 
   _pollGamepad() {
@@ -989,7 +1042,38 @@ class App {
     bind('#set-haptics', 'haptics');
 
     // Audio captions → aria-live.
-    this.audio.onCaption((text) => { if (this.settings.captions) announce(`♪ ${text}`); });
+    this.audio.onCaption((text) => { if (this.settings.captions) announce(`♪ ${T(text)}`); });
+    this._gfxPanel = panel;
+  }
+
+  /**
+   * Game language changed (Settings → Language, or the account preference
+   * arrived): js/i18n.js re-applied the static markup; re-render everything
+   * built in code in place. The round, its clock and the board are untouched.
+   */
+  onLanguage() {
+    PT = platformStrings(curLang());
+    if (!this.renderer) return; // not booted yet: boot renders in the current language
+    if (this._gfxPanel && this._gfxPanel.relocalize) this._gfxPanel.relocalize();
+    renderHelp($('#help-cards'), (a) => this.platform.keyLabel(a));
+    this._updateTitle();
+    if (this.session && this.level) {
+      this._renderObjective();
+      this._renderTray();
+      updateHUD(this.session, this.level);
+      if (this.tutorial) this._tutorialBanner();
+    }
+    const cur = currentScreen();
+    if (cur === 'setup') {
+      const m = this._setupConfig.mode;
+      if (m === 'daily') this._setupDaily();
+      else if (m === 'practice') this._setupPractice(true);
+      else if (m === 'challenge') this._setupChallenge(true);
+      else if (m === 'score') this._setupScore(true);
+    }
+    if (cur === 'journey') renderJourney($('#journey-grid'), this.progress, (st) => { closeScreen(); this.startJourneyStage(st); });
+    if (this._results && ($('#screen-results').hidden === false || cur === 'scores')) this._renderResults();
+    if (cur === 'scores') this._renderBoard();
   }
 
   _applyTitleFx() {
@@ -1026,17 +1110,23 @@ class App {
 }
 
 function modeLabel(mode) {
-  return { learn: 'Learn', journey: 'Journey', daily: 'Daily', practice: 'Practice', challenge: 'Challenge', score: 'Score chase' }[mode] || mode;
+  const L = { learn: N('Learn'), journey: N('Journey'), daily: N('Daily'), practice: N('Practice'), challenge: N('Challenge'), score: N('Score chase') };
+  return L[mode] ? T(L[mode]) : mode;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
 /* boot */
 const app = new App();
+document.addEventListener('hv-language', () => app.onLanguage());
 app.boot().catch(err => {
   console.error('boot failed', err);
   const c = $('#compat');
   if (c) {
     c.hidden = false;
-    c.querySelector('p').textContent = 'Something went wrong while starting: ' + err.message;
+    c.querySelector('p').textContent = T('Something went wrong while starting: {error}', { error: err.message });
   }
 });
 window.__colorhaven = app; // debug/testing handle

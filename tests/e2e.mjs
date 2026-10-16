@@ -23,6 +23,7 @@ import { readFile } from 'node:fs/promises';
 import { join, normalize, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { stubStarHermit, launchToken } from './starhermit-e2e.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const browserNoise = /GL Driver Message|GPU stall due to ReadPixels|Automatic fallback to software WebGL|EnableWebGLDeveloperExtensions|swiftshader|AudioContext was not allowed to start/i;
@@ -299,6 +300,69 @@ async function runPass(label, viewport, hasTouch) {
       }, saved, { timeout: 8000 });
       console.log(`  resumed journey-2 with ${saved} regions already filled`);
     });
+
+    // Signed in against a stubbed StarHermit API whose account prefers fr-CA:
+    // Automatic resolves to Canadian French; switching to Italian from Settings
+    // while a lesson is paused re-renders the coach banner, objective, tray and
+    // dialogs in place without touching the round, syncs ui.language, and
+    // Report a problem posts a bug report.
+    await step('Language: Automatic follows the StarHermit preference; live switch mid-round; ui.language; report a problem', async () => {
+      const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+      await page.goto('about:blank');
+      await page.goto(`${BASE}/index.html#game_token=${launchToken()}`, { waitUntil: 'load' });
+      await page.waitForFunction(() => window.__colorhaven && !document.querySelector('#app').hidden, null, { timeout: 10000 });
+      await screenShown('title');
+      await page.waitForFunction(() => document.documentElement.lang === 'fr-CA' && document.getElementById('btn-play').textContent === 'Jouer');
+      await page.click('.mode-btn[data-mode="learn"]');
+      await page.waitForFunction(() => document.getElementById('hud-banner').textContent.startsWith('Chaque zone a un numéro.'));
+      if ((await page.textContent('#objective-title')) !== 'Choisir une couleur') throw new Error('objective not French');
+      const before = await readState();
+      await page.click('#btn-pause');
+      await screenShown('pause');
+      if ((await page.textContent('#pause-h')) !== 'En pause') throw new Error('pause not French');
+      await page.click('#btn-pause-settings');
+      await screenShown('settings');
+      const choice = page.locator('[data-game-language="choice"]');
+      await choice.waitFor({ state: 'attached', timeout: 5000 });
+      if ((await choice.count()) !== 1) throw new Error('expected exactly one language selector');
+      await choice.scrollIntoViewIfNeeded();
+      const auto = await choice.locator('option').first().textContent();
+      if (auto !== 'Automatique — Français (Canada)') throw new Error('Automatic label not resolved: ' + auto);
+      await choice.selectOption('it-IT');
+      await page.waitForFunction(() => document.documentElement.lang === 'it-IT'
+        && document.getElementById('settings-h').textContent === 'Impostazioni'
+        && document.getElementById('hud-banner').textContent.startsWith('Ogni zona ha un numero.')
+        && document.getElementById('objective-title').textContent === 'Scegliere un colore'
+        && document.getElementById('btn-undo').textContent.startsWith('Annulla')
+        && /^Colore 1, /.test(document.querySelector('.pal-btn').getAttribute('aria-label'))
+        && document.querySelector('#gfx-fieldset legend').textContent === 'Grafica');
+      await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]')?.textContent || ''));
+      if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+      const report = page.locator('[data-game-report="title"]');
+      await report.scrollIntoViewIfNeeded();
+      await report.fill('Test report');
+      await page.click('[data-game-report="send"]');
+      await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+      if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+      const spill = await page.evaluate(() => {
+        const w = document.documentElement.clientWidth;
+        return [...document.querySelectorAll('#screen-settings select, #screen-settings input, #screen-settings button, #screen-settings textarea, #screen-settings label')]
+          .filter((n) => n.offsetParent && n.getBoundingClientRect().right > w + 1).map((n) => n.outerHTML.slice(0, 60));
+      });
+      if (spill.length) throw new Error('settings controls cut off: ' + spill.join(','));
+      await page.screenshot({ path: SHOT('language', label) });
+      await choice.selectOption('auto');
+      await page.waitForFunction(() => document.documentElement.lang === 'fr-CA' && document.getElementById('settings-h').textContent === 'Paramètres');
+      await page.locator('#btn-settings-close').scrollIntoViewIfNeeded();
+      await page.click('#btn-settings-close');
+      await screenShown('pause');
+      if ((await page.textContent('#pause-h')) !== 'En pause') throw new Error('pause screen not re-rendered');
+      await page.click('#btn-resume');
+      await screenGone('pause');
+      const after = await readState();
+      if (after.filled !== before.filled || after.selected !== before.selected || after.status !== before.status) throw new Error('round changed during the language switch');
+      await page.unroute(/\/api\/v1\//);
+    });
   } finally {
     await finishPass(label, context, errors);
   }
@@ -559,7 +623,7 @@ try {
   await runPass('mobile', { width: 390, height: 844 }, true);
   await runTutorialPass('learn', { width: 1280, height: 800 }, false);
   await runRankedPass('ranked', { width: 1280, height: 800 }, false);
-  console.log('\nE2E PASS — color-haven, graphics + desktop + mobile + learn + ranked, no page errors');
+  console.log('\nE2E PASS — color-haven, graphics + desktop + mobile (incl. language/report) + learn + ranked, no page errors');
 } finally {
   await browser.close();
   server.close();

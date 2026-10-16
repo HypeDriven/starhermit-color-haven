@@ -21,7 +21,7 @@
 
 <!-- Compatibility message when WebGL is unavailable -->
 <div id="compat" class="compat" hidden role="alert">
-  <h1>Color Haven</h1>
+  <h1 data-i18n-skip>Color Haven</h1>
   <p>This game needs WebGL, which your browser or device has disabled.
      Your progress and settings are safe — try a current version of Chrome,
      Firefox, Safari, or Edge.</p>
@@ -29,7 +29,7 @@
 
 <div id="app" hidden>
   <header id="topbar">
-    <div class="brand" aria-label="Color Haven">
+    <div class="brand" aria-label="Color Haven" data-i18n-skip>
       <span class="brand-mark" aria-hidden="true"></span>
       <span class="brand-name">Color Haven</span>
     </div>
@@ -101,7 +101,7 @@
 
   <div id="screen-title" class="screen" role="dialog" aria-modal="true" aria-labelledby="title-h">
     <div class="screen-inner title-inner">
-      <h1 id="title-h" class="game-title">Color Haven</h1>
+      <h1 id="title-h" class="game-title" data-i18n-skip>Color Haven</h1>
       <p class="tagline">Fill numbered regions. Finish the paper picture. Breathe.</p>
       <button id="btn-continue" type="button" class="primary-btn big" hidden>Continue<span class="btn-sub"></span></button>
       <button id="btn-play" type="button" class="primary-btn big">Play</button>
@@ -203,7 +203,7 @@
           <label class="check"><input type="checkbox" id="set-haptics"> Haptics (vibration)</label>
           <button id="btn-replay-tutorial" type="button" class="ghost-btn">Replay tutorial</button>
         </fieldset>
-        <fieldset id="gfx-fieldset" class="gfx-fieldset"><legend>Graphics</legend></fieldset>
+        <fieldset id="gfx-fieldset" class="gfx-fieldset" data-i18n-skip><legend>Graphics</legend></fieldset>
       </div>
       <div class="row gap"><button id="btn-settings-close" type="button" class="primary-btn">Done</button></div>
     </div>
@@ -238,6 +238,9 @@
   <p style="padding:2rem;font-family:sans-serif">Color Haven needs JavaScript to run.</p>
 </noscript>
 
+<script src="sh-language.js"></script>
+<script src="js/strings.js"></script>
+<script src="js/i18n.js"></script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
