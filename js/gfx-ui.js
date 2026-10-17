@@ -12,7 +12,7 @@ const STRINGS = {
     legend: 'Graphics', quality: 'Quality', auto: 'Auto (detected: {t})', renderScale: 'Render scale',
     fromPreset: 'From preset ({t})', adaptive: 'Adaptive resolution', showFps: 'Show frame rate',
     postFailed: 'Post-processing is unavailable on this device, so the board renders without it.',
-    unknownGpu: 'unknown GPU',
+    unknownGpu: 'unknown GPU', level: 'Level {n}',
     presets: { low: 'Low', balanced: 'Balanced', high: 'High', ultra: 'Ultra' },
     cats: { shadows: 'Shadows', ao: 'Ambient occlusion', grade: 'Color grade', antialias: 'Anti-aliasing', lighting: 'Lighting', detail: 'Paper detail', particles: 'Pigment particles', ambient: 'Ambient motion' },
     tiers: { off: 'Off', on: 'On', low: 'Low', medium: 'Medium', high: 'High', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', basic: 'Basic', studio: 'Studio', plain: 'Plain', detailed: 'Detailed' },
@@ -22,7 +22,7 @@ const STRINGS = {
     legend: 'Gráficos', quality: 'Calidad', auto: 'Automática (detectada: {t})', renderScale: 'Escala de renderizado',
     fromPreset: 'Según el ajuste ({t})', adaptive: 'Resolución adaptativa', showFps: 'Mostrar fotogramas por segundo',
     postFailed: 'El posprocesado no está disponible en este dispositivo; el tablero se muestra sin él.',
-    unknownGpu: 'GPU desconocida',
+    unknownGpu: 'GPU desconocida', level: 'Nivel {n}',
     presets: { low: 'Baja', balanced: 'Equilibrada', high: 'Alta', ultra: 'Ultra' },
     cats: { shadows: 'Sombras', ao: 'Oclusión ambiental', grade: 'Corrección de color', antialias: 'Antialiasing', lighting: 'Iluminación', detail: 'Detalle del papel', particles: 'Partículas de pigmento', ambient: 'Movimiento ambiental' },
     tiers: { off: 'No', on: 'Sí', low: 'Bajas', medium: 'Medias', high: 'Altas', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', basic: 'Básica', studio: 'Estudio', plain: 'Liso', detailed: 'Detallado' },
@@ -32,7 +32,7 @@ const STRINGS = {
     legend: 'Grafik', quality: 'Qualität', auto: 'Automatisch (erkannt: {t})', renderScale: 'Renderskalierung',
     fromPreset: 'Aus Voreinstellung ({t})', adaptive: 'Adaptive Auflösung', showFps: 'Bildrate anzeigen',
     postFailed: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar; das Brett wird ohne sie dargestellt.',
-    unknownGpu: 'unbekannte GPU',
+    unknownGpu: 'unbekannte GPU', level: 'Stufe {n}',
     presets: { low: 'Niedrig', balanced: 'Ausgewogen', high: 'Hoch', ultra: 'Ultra' },
     cats: { shadows: 'Schatten', ao: 'Umgebungsverdeckung', grade: 'Farbkorrektur', antialias: 'Kantenglättung', lighting: 'Beleuchtung', detail: 'Papierdetails', particles: 'Farbpartikel', ambient: 'Umgebungsbewegung' },
     tiers: { off: 'Aus', on: 'An', low: 'Niedrig', medium: 'Mittel', high: 'Hoch', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', basic: 'Einfach', studio: 'Studio', plain: 'Schlicht', detailed: 'Detailliert' },
@@ -42,7 +42,7 @@ const STRINGS = {
     legend: 'Graphismes', quality: 'Qualité', auto: 'Auto (détectée : {t})', renderScale: 'Échelle de rendu',
     fromPreset: 'Selon le préréglage ({t})', adaptive: 'Résolution adaptative', showFps: 'Afficher les images par seconde',
     postFailed: 'Le post-traitement n’est pas disponible sur cet appareil ; le plateau s’affiche sans lui.',
-    unknownGpu: 'GPU inconnu',
+    unknownGpu: 'GPU inconnu', level: 'Niveau {n}',
     presets: { low: 'Basse', balanced: 'Équilibrée', high: 'Haute', ultra: 'Ultra' },
     cats: { shadows: 'Ombres', ao: 'Occlusion ambiante', grade: 'Étalonnage des couleurs', antialias: 'Anticrénelage', lighting: 'Éclairage', detail: 'Détail du papier', particles: 'Particules de pigment', ambient: 'Mouvement ambiant' },
     tiers: { off: 'Non', on: 'Oui', low: 'Basses', medium: 'Moyennes', high: 'Hautes', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', basic: 'Simple', studio: 'Studio', plain: 'Uni', detailed: 'Détaillé' },
@@ -52,7 +52,7 @@ const STRINGS = {
     legend: 'Gráficos', quality: 'Qualidade', auto: 'Automática (detectada: {t})', renderScale: 'Escala de renderização',
     fromPreset: 'Da predefinição ({t})', adaptive: 'Resolução adaptativa', showFps: 'Mostrar taxa de quadros',
     postFailed: 'O pós-processamento não está disponível neste dispositivo; o tabuleiro é exibido sem ele.',
-    unknownGpu: 'GPU desconhecida',
+    unknownGpu: 'GPU desconhecida', level: 'Nível {n}',
     presets: { low: 'Baixa', balanced: 'Equilibrada', high: 'Alta', ultra: 'Ultra' },
     cats: { shadows: 'Sombras', ao: 'Oclusão de ambiente', grade: 'Correção de cor', antialias: 'Antisserrilhamento', lighting: 'Iluminação', detail: 'Detalhe do papel', particles: 'Partículas de pigmento', ambient: 'Movimento ambiente' },
     tiers: { off: 'Desligado', on: 'Ligado', low: 'Baixas', medium: 'Médias', high: 'Altas', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', basic: 'Básica', studio: 'Estúdio', plain: 'Liso', detailed: 'Detalhado' },
@@ -62,7 +62,7 @@ const STRINGS = {
     legend: 'Grafica', quality: 'Qualità', auto: 'Automatica (rilevata: {t})', renderScale: 'Scala di rendering',
     fromPreset: 'Dal preset ({t})', adaptive: 'Risoluzione adattiva', showFps: 'Mostra fotogrammi al secondo',
     postFailed: 'La post-elaborazione non è disponibile su questo dispositivo; il tabellone viene mostrato senza.',
-    unknownGpu: 'GPU sconosciuta',
+    unknownGpu: 'GPU sconosciuta', level: 'Livello {n}',
     presets: { low: 'Bassa', balanced: 'Bilanciata', high: 'Alta', ultra: 'Ultra' },
     cats: { shadows: 'Ombre', ao: 'Occlusione ambientale', grade: 'Correzione colore', antialias: 'Antialiasing', lighting: 'Illuminazione', detail: 'Dettaglio della carta', particles: 'Particelle di pigmento', ambient: 'Movimento ambientale' },
     tiers: { off: 'No', on: 'Sì', low: 'Basse', medium: 'Medie', high: 'Alte', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', basic: 'Semplice', studio: 'Studio', plain: 'Liscia', detailed: 'Dettagliata' },
@@ -211,7 +211,7 @@ export function mountGraphicsPanel(root, { renderer, getSaved, save }) {
     scale.setAttribute('aria-valuetext', scale.value + '%');
     adaptive.checked = saved.adaptive !== false;
     fps.checked = !!saved.show_fps;
-    summary.textContent = [info.gpu || S.unknownGpu, info.summary].join(' · ');
+    summary.textContent = [info.gpu || S.unknownGpu, info.level != null ? S.level.replace('{n}', info.level) : null, info.summary].filter(Boolean).join(' · ');
     note.hidden = !info.postFailed;
     root.dataset.gfxPreset = r.preset;
   };

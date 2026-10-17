@@ -23,7 +23,7 @@ export const CATEGORIES = {
 // Each preset: a tier per category, a render scale and a device-pixel-ratio cap.
 const TABLE = {
   low:      { scale: 1,    dprCap: 1,   shadows: 'off',    ao: 'off',  grade: 'off', antialias: 'off',  lighting: 'basic',  detail: 'plain',    particles: 'off',  ambient: 'off' },
-  balanced: { scale: 1,    dprCap: 1.5, shadows: 'low',    ao: 'off',  grade: 'on',  antialias: 'fxaa', lighting: 'studio', detail: 'detailed', particles: 'low',  ambient: 'on' },
+  balanced: { scale: 0.9,  dprCap: 1.5, shadows: 'low',    ao: 'off',  grade: 'on',  antialias: 'fxaa', lighting: 'studio', detail: 'detailed', particles: 'low',  ambient: 'on' },
   high:     { scale: 1,    dprCap: 2,   shadows: 'medium', ao: 'on',   grade: 'on',  antialias: 'smaa', lighting: 'studio', detail: 'detailed', particles: 'high', ambient: 'on' },
   ultra:    { scale: 1.25, dprCap: 2,   shadows: 'high',   ao: 'high', grade: 'on',  antialias: 'msaa', lighting: 'studio', detail: 'detailed', particles: 'high', ambient: 'on' },
 };
@@ -31,22 +31,67 @@ const TABLE = {
 export const SHADOW_MAP = { off: 0, low: 1024, medium: 2048, high: 4096 };
 export const PARTICLE_POOL = { off: 0, low: 400, high: 1200 };
 
-/**
- * Best preset for this GPU (WEBGL_debug_renderer_info UNMASKED_RENDERER).
- * Software renderers get low; discrete GPUs / Apple M get high; else balanced.
- * `mobile` (touch-only device) caps the result at balanced.
- */
-export function detectPreset(gpu, mobile = false) {
-  const g = String(gpu || '').toLowerCase();
-  let p = 'balanced';
-  if (/swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/.test(g)) p = 'low';
-  else if (/nvidia|geforce|rtx|gtx|quadro|radeon rx|radeon pro|amd radeon(?!.*graphics)|apple m\d/.test(g)) p = 'high';
-  if (mobile && PRESETS.indexOf(p) > PRESETS.indexOf('balanced')) p = 'balanced';
-  return p;
+// Auto picks the preset from the StarHermit hardware level (0 = Galaxy S20 / Intel UHD or weaker, 20 = RTX
+// 5090; js/gpu-level.js → globalThis.StarHermitGpu): Low from 0, Balanced from 4, High from 10, Ultra from 17.
+// Phones, tablets and ≤ 4 GB machines are capped at level 9 (Balanced); software renderers are level 0.
+export const PRESET_LEVELS = { low: 0, balanced: 4, high: 10, ultra: 17 };
+const gpuApi = () => globalThis.StarHermitGpu;
+
+/** Hardware level (0–20) for an unmasked renderer string plus StarHermitGpu.detectSystem() facts. */
+export function detectLevel(gpu, system = {}) {
+  const G = gpuApi();
+  if (!G) return PRESET_LEVELS.balanced;
+  return G.detectLevel({ ...(system || {}), gpu: String(gpu || '') });
 }
 
-/** Resolve saved settings into concrete tiers. */
-export function resolve(saved, detected) {
+/** The preset Auto starts from for a hardware level. */
+export function presetForLevel(level) {
+  const G = gpuApi();
+  if (G) return G.presetForLevel(level, PRESET_LEVELS);
+  return level >= 17 ? 'ultra' : level >= 10 ? 'high' : level >= 4 ? 'balanced' : 'low';
+}
+
+/** Best preset for a GPU (the hardware level already caps phones/tablets at Balanced). */
+export function detectPreset(gpu, system = {}) {
+  return presetForLevel(detectLevel(gpu, system));
+}
+
+/** Scale a count tuned at the preset's floor level up for faster GPUs (≤ 4×, never below the floor). */
+function scaleCount(n, preset, level) {
+  const G = gpuApi();
+  const floor = PRESET_LEVELS[preset] || 0;
+  return Math.round(G ? G.scaleBudget(n, Math.max(Number(level) || 0, floor), floor) : n);
+}
+
+/*
+ * Per-preset asset and effect budget. Each preset is tuned to hold 60 FPS on the weakest GPU Auto gives
+ * it (Low → level 0, Balanced → 4, High → 10, Ultra → 17; measured with tests/gfx-bench.mjs).
+ *   material     table, frame and tiles: 'lambert' | 'standard' | 'physical' (sheen paper tiles);
+ *   paperTexture / linenTexture / woodTexture  grain canvas sizes in px (detailed scene; wood is 4:1);
+ *   bevel        rounded-tile and frame bevel segments (detailed scene);
+ *   overlayCell  number-overlay canvas px per board cell (512–2048 total);
+ *   particles    pigment-puff pool at the floor level (the Particles tier caps it: off 0, low 400);
+ *   motes        ambient dust motes at the floor level;
+ *   aoRes        GTAO resolution as a fraction of the frame.
+ */
+export const BUDGETS = {
+  low: { material: 'lambert', paperTexture: 64, linenTexture: 64, woodTexture: 128, bevel: 1, overlayCell: 64, particles: 150, motes: 12, aoRes: 0.5 },
+  balanced: { material: 'standard', paperTexture: 128, linenTexture: 128, woodTexture: 256, bevel: 1, overlayCell: 80, particles: 300, motes: 24, aoRes: 0.5 },
+  high: { material: 'standard', paperTexture: 128, linenTexture: 128, woodTexture: 256, bevel: 2, overlayCell: 96, particles: 800, motes: 36, aoRes: 0.5 },
+  ultra: { material: 'physical', paperTexture: 256, linenTexture: 256, woodTexture: 512, bevel: 3, overlayCell: 128, particles: 1200, motes: 60, aoRes: 1 },
+};
+export const PARTICLE_CAP = { off: 0, low: 400, high: 2400 };
+
+/** A preset's concrete budget for a hardware level and Particles tier. */
+export function budgetFor(preset, level, particles = 'high') {
+  const b = { ...(BUDGETS[preset] || BUDGETS.balanced) };
+  b.particles = Math.min(PARTICLE_CAP[particles] ?? PARTICLE_CAP.high, scaleCount(b.particles, preset, level));
+  b.motes = Math.min(240, scaleCount(b.motes, preset, level));
+  return b;
+}
+
+/** Resolve saved settings into concrete tiers (`level`: hardware level; defaults to the preset's floor). */
+export function resolve(saved, detected, level) {
   const s = saved || {};
   const auto = !PRESETS.includes(s.preset);
   const preset = auto ? (PRESETS.includes(detected) ? detected : 'balanced') : s.preset;
@@ -56,6 +101,8 @@ export function resolve(saved, detected) {
   for (const [cat, tiers] of Object.entries(CATEGORIES)) {
     out[cat] = tiers.includes(s[cat]) ? s[cat] : row[cat];
   }
+  out.level = level == null ? PRESET_LEVELS[preset] : level;
+  out.budget = budgetFor(preset, out.level, out.particles);
   out.adaptive = s.adaptive !== false;
   out.showFps = !!s.show_fps;
   // Post-processing only when something needs it; plain MSAA uses the canvas.

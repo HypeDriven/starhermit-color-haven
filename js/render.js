@@ -17,7 +17,7 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { detectPreset, resolve, describe, pixelRatio, SHADOW_MAP, PARTICLE_POOL } from './gfx.js';
+import { detectLevel, presetForLevel, resolve, describe, pixelRatio, SHADOW_MAP } from './gfx.js';
 
 /* Authored framing constants (no magic offsets scattered in code). */
 export const CAMERA = {
@@ -141,6 +141,15 @@ function woodCanvas(w = 256, h = 64) {
   return c;
 }
 
+// Run a post pass at a fraction of the frame (per-preset budget). EffectComposer sizes every pass to the
+// full frame in addPass/setSize, so the pass's own setSize is wrapped to apply the scale.
+function atScale(pass, k) {
+  if (!(k > 0 && k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
 function hexCss(hex) { return '#' + hex.toString(16).padStart(6, '0'); }
 
 export class PaperRenderer {
@@ -185,7 +194,9 @@ export class PaperRenderer {
     this.gpu = this._readGpu();
     const mobile = (window.matchMedia && matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) ||
       /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-    this.detected = detectPreset(this.gpu, mobile);
+    // StarHermit hardware level → Auto preset (SwiftShader = level 0 → Low; phones cap at Balanced).
+    this.level = detectLevel(this.gpu, globalThis.StarHermitGpu ? globalThis.StarHermitGpu.detectSystem() : { mobile });
+    this.detected = presetForLevel(this.level);
 
     this._buildLights();
     this.setGraphics(this.saved);
@@ -287,7 +298,7 @@ export class PaperRenderer {
     const ptex = this._textures(detailed);
     const table = new THREE.Mesh(
       new THREE.PlaneGeometry(120, 120),
-      new THREE.MeshStandardMaterial({ color: theme.table, roughness: 0.95, metalness: 0, map: ptex.linen, envMapIntensity: 0.15 })
+      this._lit({ color: theme.table, roughness: 0.95, metalness: 0, map: ptex.linen, envMapIntensity: 0.15 })
     );
     table.rotation.x = -Math.PI / 2;
     table.position.y = -0.28;
@@ -296,13 +307,14 @@ export class PaperRenderer {
     g.add(table);
 
     // Frame: four paper slats around the board.
-    const frameMat = new THREE.MeshStandardMaterial({ color: theme.frame, roughness: detailed ? 0.62 : 0.8, map: ptex.wood, envMapIntensity: 0.6 });
+    const frameMat = this._lit({ color: theme.frame, roughness: detailed ? 0.62 : 0.8, map: ptex.wood, envMapIntensity: 0.6 });
+    const bevel = this.q.budget.bevel;
     const fw = w + 0.6, fh = h + 0.6, ft = 0.34;
     const mkSlat = (sw, sh, x, z) => {
       // Build each slat long along x and turn the vertical ones, so wood grain follows the slat.
       const turn = sh > sw;
       const L = turn ? sh : sw, D = turn ? sw : sh;
-      const m = new THREE.Mesh(detailed ? new RoundedBoxGeometry(L, ft, D, 2, 0.05) : new THREE.BoxGeometry(L, ft, D), frameMat);
+      const m = new THREE.Mesh(detailed ? new RoundedBoxGeometry(L, ft, D, bevel, 0.05) : new THREE.BoxGeometry(L, ft, D), frameMat);
       if (turn) m.rotation.y = Math.PI / 2;
       m.position.set(x, -ft / 2 + 0.02, z);
       m.castShadow = true;
@@ -315,11 +327,11 @@ export class PaperRenderer {
 
     // Paper tiles: one InstancedMesh; per-instance color + matrix.
     const size = 1 - TILE.GAP;
-    const geo = detailed ? new RoundedBoxGeometry(size, TILE.HEIGHT, size, 2, 0.035) : new THREE.BoxGeometry(size, TILE.HEIGHT, size);
-    const mat = new THREE.MeshStandardMaterial({
+    const geo = detailed ? new RoundedBoxGeometry(size, TILE.HEIGHT, size, bevel, 0.035) : new THREE.BoxGeometry(size, TILE.HEIGHT, size);
+    const mat = this._lit({
       roughness: 0.9, metalness: 0, envMapIntensity: 0.3,
       map: ptex.paper, bumpMap: detailed ? ptex.paper : null, bumpScale: detailed ? 1.2 : 0,
-    });
+    }, { sheen: 0.35, sheenRoughness: 0.8 });
     const tiles = new THREE.InstancedMesh(geo, mat, n);
     tiles.castShadow = true;
     tiles.receiveShadow = true;
@@ -340,7 +352,7 @@ export class PaperRenderer {
 
     // Number overlay: single transparent plane with canvas texture.
     const canvas = document.createElement('canvas');
-    const px = Math.min(2048, Math.max(512, 96 * w));
+    const px = Math.min(2048, Math.max(512, this.q.budget.overlayCell * w)); // per-preset overlay size
     canvas.width = canvas.height = px;
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -409,7 +421,7 @@ export class PaperRenderer {
     g.add(ghost);
 
     // Pooled pigment puffs (effects layer, never raycastable).
-    const pCount = PARTICLE_POOL[this.q.particles] || 0;
+    const pCount = this.q.budget.particles; // per-preset pool (Particles tier caps it)
     let particles = null;
     if (pCount > 0) {
       const pGeo = new THREE.PlaneGeometry(0.12, 0.12);
@@ -445,6 +457,18 @@ export class PaperRenderer {
     this.renderer.compile(this.scene, this.camera);
   }
 
+  /** Lit material for the preset budget: Lambert on Low, Standard above, Physical (with `physicalExtra`, e.g.
+   *  paper sheen) on Ultra. */
+  _lit(params, physicalExtra) {
+    const kind = this.q.budget.material;
+    if (kind === 'lambert') {
+      const { roughness, metalness, envMapIntensity, bumpMap, bumpScale, ...lp } = params;
+      return new THREE.MeshLambertMaterial(lp);
+    }
+    if (kind === 'physical' && physicalExtra) return new THREE.MeshPhysicalMaterial({ ...params, ...physicalExtra });
+    return new THREE.MeshStandardMaterial(params);
+  }
+
   /** Shared procedural textures (plain: none). Kept across board rebuilds. */
   _textures(detailed) {
     if (!detailed) return { paper: null, linen: null, wood: null };
@@ -458,13 +482,14 @@ export class PaperRenderer {
         t.userData.shared = true;
         return t;
       };
-      this._tex = { paper: mk(paperCanvas()), linen: mk(linenCanvas(), [48, 48]), wood: mk(woodCanvas(), [1, 1]) };
+      const b = this.q.budget; // per-preset texture variants
+      this._tex = { paper: mk(paperCanvas(b.paperTexture)), linen: mk(linenCanvas(b.linenTexture), [48, 48]), wood: mk(woodCanvas(b.woodTexture, b.woodTexture / 4), [1, 1]) };
     }
     return this._tex;
   }
 
   _buildMotes(w, h, top) {
-    const count = 36;
+    const count = this.q.budget.motes; // per-preset budget
     const r = texRng(w * 131 + h);
     const pos = new Float32Array(count * 3);
     const seeds = [];
@@ -895,7 +920,7 @@ export class PaperRenderer {
   setGraphics(saved) {
     this.saved = saved || {};
     const prev = this.q;
-    const g = resolve(this.saved, this.detected);
+    const g = resolve(this.saved, this.detected, this.level);
     this.q = g;
     const wantMsaa = g.antialias === 'msaa' && !g.post;
     if (wantMsaa !== this._msaa) this._createRenderer(wantMsaa);
@@ -932,7 +957,14 @@ export class PaperRenderer {
     this.postKey = null; // rebuild the post chain on the next frame
     this._fpsVisible(g.showFps);
     this._applyAmbient();
-    const rebuild = this._board && prev && (prev.detail !== g.detail || prev.particles !== g.particles);
+    // Preset asset variants (material class, grain textures, bevels, overlay size, pools) live in the board.
+    const pb = (prev && prev.budget) || {}, nb = g.budget;
+    const assets = ['material', 'paperTexture', 'linenTexture', 'woodTexture', 'bevel', 'overlayCell', 'particles', 'motes'].some((k) => pb[k] !== nb[k]);
+    if (prev && ['paperTexture', 'linenTexture', 'woodTexture'].some((k) => pb[k] !== nb[k]) && this._tex) {
+      for (const t of Object.values(this._tex)) t.dispose();
+      this._tex = null;
+    }
+    const rebuild = this._board && prev && (prev.detail !== g.detail || prev.particles !== g.particles || assets);
     if (rebuild) {
       const b = this._board;
       const focus = this._focusCell;
@@ -959,6 +991,7 @@ export class PaperRenderer {
     const px = [Math.round(this._size[0] * this.pixelRatio), Math.round(this._size[1] * this.pixelRatio)];
     return {
       gpu: this.gpu || '',
+      level: this.level,
       detected: this.detected,
       resolved: this.q,
       summary: describe(this.q, px, phrases),
@@ -1003,7 +1036,7 @@ export class PaperRenderer {
       composer.setSize(w, h);
       composer.addPass(new RenderPass(this.scene, this.camera));
       if (g.ao !== 'off') {
-        const ao = new PaperGTAOPass(this.scene, this.camera, w * pr, h * pr);
+        const ao = atScale(new PaperGTAOPass(this.scene, this.camera, w * pr, h * pr), g.budget.aoRes);
         ao.output = GTAOPass.OUTPUT.Default;
         ao.blendIntensity = g.ao === 'high' ? 0.85 : 0.7;
         ao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 0.6, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });

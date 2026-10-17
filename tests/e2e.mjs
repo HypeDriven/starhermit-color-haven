@@ -565,6 +565,7 @@ async function runGraphicsPass(label, viewport, hasTouch) {
       await page.waitForTimeout(200);
       g = await gfxState();
       if (g.body !== 'high' || g.q.antialias !== 'smaa' || !/2048² shadows/.test(g.summary)) throw new Error('high not applied: ' + g.summary);
+      if (!/ · Level 0 · /.test(g.summary)) throw new Error('summary lacks the hardware level: ' + g.summary);
       await page.screenshot({ path: SHOT('graphics', label) });
     });
 
