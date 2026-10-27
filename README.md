@@ -3,28 +3,29 @@
 A relaxing paint-by-numbers paper-art game. Fill numbered regions with their
 assigned palette colors and complete illustrations — no timer, no way to lose.
 
+A StarHermit engine script game (engine 1.16.0): `native/*.ts` on the
+unchanged rules and content in `js/`, played natively by the StarHermit client
+and in browsers by the engine's web runtime. See `spec.md`.
+
 ## Run
 
 ```
-node server.js [port]    # default 8080, then open http://localhost:8080
+starhermit .                 # natively (STARHERMIT: the 1.16.0 runtime)
+npm run package              # web loader index.html + starhermit-files.json
+node server.js 8080          # serve the folder, then open http://localhost:8080
 ```
 
-Zero dependencies; Three.js is vendored in `vendor/`.
+Run `npm run package` after every change (and `npm run css` after editing
+`tools/ui-style.css`, `npm run plays` after a content change).
 
 ## Test
 
 ```
-npm test                                   # rules engine unit tests
-node server.js 8091 &                      # then, against the running server:
-BASE=http://localhost:8091 node tests/server.smoke.mjs
+npm test                     # rules, save model, i18n, then tsc, starhermit check and the play scripts
+npm run test:browser         # the packaged loader in headless Chrome (desktop, phone, landscape)
+node server.js 8091 &        # then, against the running server:
+npm run test:server
 ```
 
-The server writes runtime state (saves, leaderboards) to `data/`, which is
-git-ignored.
-
-## Dev hooks
-
-- `?autostart=practice|daily|journey|learn|selftest` — jump straight into a
-  round; `selftest` plays a scripted full round to the results screen.
-- `?screen=settings|help|journey|pause` — open any overlay directly
-  (screenshot validation).
+The dev server writes runtime state (saves, leaderboards) to `data/`, which is
+git-ignored and not part of the package.
