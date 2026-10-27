@@ -1,0 +1,92 @@
+# The menus by pointer and keys: Settings (Text cues for sounds and the
+# color-vision-safe palette on), Help, a Practice round paused with Escape
+# (Settings and Help over the pause menu, Resume, P), left and resumed from
+# the title's Continue, the Score chase setup with a typed seed, and the
+# journey map closed with Escape.
+until 300 Color Haven
+frames 30
+click =Settings
+until 60 Text cues for sounds
+frames 10
+click Text cues for sounds
+frames 5
+click Color-vision-safe palette
+frames 5
+save settings
+click =Done
+frames 10
+click =Help
+until 60 How to play
+frames 10
+save help
+click =Close
+frames 10
+click =Practice
+until 60 Difficulty
+frames 10
+click =Start
+until 120 Par time
+frames 30
+key Digit1 1
+frames 2
+key Enter 1
+frames 5
+key Escape 1
+until 60 Paused
+frames 10
+click =Settings #2
+until 60 Text cues for sounds
+frames 10
+key Escape 1
+until 60 Leave round
+frames 10
+click =Help #2
+until 60 How to play
+frames 10
+click =Close
+until 60 Leave round
+frames 10
+save pause
+click =Resume
+frames 10
+key KeyP 1
+until 60 Leave round
+frames 10
+click =Leave round
+until 120 Continue
+frames 10
+save title-continue
+click Continue
+until 120 Resumed
+frames 30
+save resumed
+key Escape 1
+until 60 Leave round
+frames 10
+click =Leave round
+until 120 Continue
+frames 10
+click =Score chase
+until 60 Fair play
+frames 10
+click setup-seed
+frames 5
+type {Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}paper
+frames 5
+save score-setup
+click =Start
+until 120 Seed “paper”
+frames 30
+save score-round
+key Escape 1
+until 60 Leave round
+frames 10
+click =Leave round
+until 120 Continue
+frames 10
+click =Journey
+until 60 Every 8th stage is a mastery test
+frames 10
+key Escape 1
+frames 10
+expect Fill numbered regions

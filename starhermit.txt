@@ -1,9 +1,24 @@
 name=Color Haven
 description=Fill numbered regions with matching colors to complete layered paper illustrations at your own pace.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=score-script.js
 cover=cover.jpg
+
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.16.0
+engine.minor=18
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard controls (players rebind keys and pads in the runtime's Options).
+# The board is also played with the pointer or touch: tap a color in the
+# tray, then tap a region to fill it.
 control.left=ArrowLeft | Move to the region on the left
 control.right=ArrowRight | Move to the region on the right
 control.up=ArrowUp | Move to the region above
@@ -14,6 +29,8 @@ control.hint=KeyH | Hint
 control.recenter=KeyC | Re-center camera
 control.pause=KeyP | Pause
 control.cancel=Escape | Pause / close panel
+control.color_prev=KeyQ | Previous color
+control.color_next=KeyE | Next color
 control.color1=Digit1+Numpad1 | Pick color 1
 control.color2=Digit2+Numpad2 | Pick color 2
 control.color3=Digit3+Numpad3 | Pick color 3
@@ -22,3 +39,23 @@ control.color5=Digit5+Numpad5 | Pick color 5
 control.color6=Digit6+Numpad6 | Pick color 6
 control.color7=Digit7+Numpad7 | Pick color 7
 control.color8=Digit8+Numpad8 | Pick color 8
+engine.group.left=Board
+engine.group.color_prev=Palette
+engine.group.undo=Assists
+engine.group.pause=Game
+
+# Gamepad defaults: the D-pad or left stick moves between regions, A fills,
+# the shoulders step through the palette (the number keys' colors), X undoes,
+# Y hints, the right stick's press re-centers, Start pauses, B closes panels.
+engine.gamepad.left=DpadLeft+LeftStickLeft
+engine.gamepad.right=DpadRight+LeftStickRight
+engine.gamepad.up=DpadUp+LeftStickUp
+engine.gamepad.down=DpadDown+LeftStickDown
+engine.gamepad.fill=South
+engine.gamepad.undo=West
+engine.gamepad.hint=North
+engine.gamepad.recenter=RightStickPress
+engine.gamepad.pause=Start
+engine.gamepad.cancel=East
+engine.gamepad.color_prev=LeftShoulder
+engine.gamepad.color_next=RightShoulder

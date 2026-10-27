@@ -3,10 +3,16 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
-  "description": "Color Haven — a relaxing paint-by-numbers paper-art game.",
+  "description": "Color Haven — a relaxing paint-by-numbers paper-art game on the StarHermit engine.",
   "scripts": {
-    "test": "node tests/rules.test.mjs && node --test tests/gfx.test.mjs tests/platform.test.mjs tests/i18n.test.mjs",
-    "test:e2e": "node tests/e2e.mjs",
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node tests/rules.test.mjs && node --test tests/store.test.mjs tests/i18n.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
+    "test:server": "node tests/server.smoke.mjs",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "plays": "node tools/gen-play.mjs",
     "start": "node server.js 8080"
   },
   "devDependencies": {

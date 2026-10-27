@@ -9,6 +9,11 @@ import {
   createGame, applyCommand, serialize, deserialize, hashState, score,
 } from './rules.js';
 
+/** The session's monotonic clock in ms: performance.now() unless a host
+ * sets GameSession.clock (the engine client counts its fixed steps, so
+ * pauses, a hidden window and slow frames never cost time). */
+const clockNow = () => (GameSession.clock ? GameSession.clock() : performance.now());
+
 export class GameSession {
   /**
    * @param level   content descriptor
@@ -26,6 +31,9 @@ export class GameSession {
     this._hashTrail = [hashState(this.state)];
   }
 
+  /** Optional clock override (ms). */
+  static clock = null;
+
   static newId() {
     return 's-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36);
   }
@@ -37,7 +45,7 @@ export class GameSession {
 
   /** Milliseconds since session start, excluding paused time (authoritative). */
   _elapsedDelta() {
-    const now = performance.now();
+    const now = clockNow();
     if (this._lastStamp == null) { this._lastStamp = now; return 0; }
     const d = this.paused ? 0 : now - this._lastStamp;
     this._lastStamp = now;
@@ -87,7 +95,7 @@ export class GameSession {
   /** Live elapsed ms (state.elapsedMs + time since last command), for display. */
   elapsedNow() {
     if (this.paused || this._lastStamp == null || this.isOver) return this.state.elapsedMs;
-    return this.state.elapsedMs + Math.floor(performance.now() - this._lastStamp);
+    return this.state.elapsedMs + Math.floor(clockNow() - this._lastStamp);
   }
 
   /** Replay envelope for submission/validation. */
