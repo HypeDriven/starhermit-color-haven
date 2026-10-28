@@ -6,7 +6,7 @@
     "assets/ui-style.json": {"sha256": "443952e8146404972d487fa84e90dacdd70f00311f8bd49d2d4d8bb63b3d95d0", "size": 12551},
     "cover.jpg": {"sha256": "77aad43e3c5c76b4023ff3b91ba5ce4aa8dafa271c5c528165a638845dae788a", "size": 65420},
     "icon.png": {"sha256": "2030ac7f020111b33d68f643547b434821e8fd767f00a8624ac5966b9d7273bf", "size": 9525},
-    "index.html": {"sha256": "1631e42e2dd4ed19f4d06e9e4470fdb9025d1f0cc8f4dca2517c8df61e1431ec", "size": 1758},
+    "index.html": {"sha256": "d5b2debf8f28eda6aba974965745eed273ac5ee9bcbeff5aa93af9d061dec285", "size": 1758},
     "js/content.js": {"sha256": "d885aa5460926be3ce96b058c82502a002a6f4122fd2943380160e9d953e71ff", "size": 15759},
     "js/i18n.js": {"sha256": "59db9a5e7357bd561e47582d2a9a68725478945e33f07865233852137a652316", "size": 1617},
     "js/platform-strings.js": {"sha256": "d70099e221c48c2e49745cacb4a90c7ce395c05c434f152610e77e5f6e9411e8", "size": 5851},
@@ -41,7 +41,7 @@
     "sfx/paper-undo.opus": {"sha256": "f4cfdcb6018c62a8a5e5a19ffcddc43f391ec9088f717c4d2d34fcb4a2c4fdd6", "size": 12557},
     "sfx/tutorial-page.opus": {"sha256": "c4529ac4177f5f61a49a6a0fb5b3bc61ad22385ae80ef9729af4d143fe4030ca", "size": 12392},
     "sfx/ui-tick.opus": {"sha256": "8c45d6a601a0b3ec655daf248753748547cb0ba0b1d56c9227c53ffdadcf6e4d", "size": 11045},
-    "starhermit.txt": {"sha256": "1d3980dc506398797385652aaf8f2de1ba6a778e58b2bc2d1d3c8cf21db1fef0", "size": 2534}
+    "starhermit.txt": {"sha256": "53e9d8169d475547699eff1984bcf82690fafb57c36862aee4e30f2759502e58", "size": 2534}
   },
   "excluded": ["README.md", "coverart.png", "data/", "knownissues.md", "node_modules/", "package-lock.json", "package.json", "server.js", "sfx/manifest.md", "sfx/manifest.txt", "spec.md", "tests/", "tools/", "tsconfig.json"],
   "format": 1
