@@ -12,7 +12,7 @@
 // playfield the HUD leaves (setViewOffset), as the browser build's canvas
 // sat between its rails and tray.
 //
-// Gaps from three.js: lights take three.js intensities ÷ π; paper sheen
+// Gaps from three.js: none in the lights (the page's r160 values at minor 28); paper sheen
 // (Ultra's MeshPhysicalMaterial) is not drawn by the engine; the post chain
 // is renderer.ao / grade / antialias (its ambient occlusion also reads the
 // number overlay, which the browser build's GTAO pass left out); the
@@ -48,17 +48,18 @@ let look: Look | null = null;
 let reducedMotion = false;
 let ambientTime = 0;
 
-// -- lights (js/render.js _buildLights), three.js intensities ÷ π --------------------------
-const hemi = new HemisphereLight(0xffffff, 0x8a7a66, 0.75 / PI);
+// -- lights (js/render.js _buildLights), the page's three.js r160 intensities ---------------
+const hemi = new HemisphereLight(0xffffff, 0x8a7a66, 0.75);
 scene.add(hemi);
-const KEY_INTENSITY = 1.6 / PI;
+const KEY_INTENSITY = 1.6;
 const key = new DirectionalLight(0xfff1d6, KEY_INTENSITY);
 key.shadow.bias = -0.0004;
+key.shadow.normalBias = 0.02;
 key.shadow.radius = 3;
 scene.add(key);
 scene.add(key.target);
 const keyBase = new Vector3(6, 12, 4);
-const rim = new DirectionalLight(0xdde8ff, 0.35 / PI);
+const rim = new DirectionalLight(0xdde8ff, 0.35);
 rim.position.set(-5, 6, -6);
 scene.add(rim);
 let envTex: Texture | null = null;
@@ -173,7 +174,8 @@ function lit(p: LitParams): Material {
   if (!look || look.budget.material === "lambert") return new MeshLambertMaterial({ ...(p.color != null ? { color: p.color } : {}), map: p.map ?? null });
   return new MeshStandardMaterial({
     ...(p.color != null ? { color: p.color } : {}), roughness: p.roughness, metalness: p.metalness ?? 0, map: p.map ?? null,
-    envMapIntensity: p.envMapIntensity, bumpMap: p.bumpMap ?? null, bumpScale: p.bumpScale ?? 1,
+    // r160 scaled scene.environment by each material's envMapIntensity: give each its own envMap.
+    envMap: look.studio ? envTex : null, envMapIntensity: p.envMapIntensity, bumpMap: p.bumpMap ?? null, bumpScale: p.bumpScale ?? 1,
   });
 }
 
@@ -335,14 +337,16 @@ export function buildBoard(level: Level, palette: PaletteEntry[], theme: Theme):
 }
 let pending: { level: Level; palette: PaletteEntry[]; theme: Theme } | null = null;
 
-/** Point the key light at the board and reach its shadow over it. */
+/** Point the key light at the board and fit its shadow box tightly to it. */
 function fitShadow(): void {
   const w = board ? board.level.w : 8, h = board ? board.level.h : 8;
   const half = Math.hypot(w + 1, h + 1) / 2 + 0.5;
   keyBase.copy(new Vector3(0.55, 0.66, 0.42).normalize()).multiplyScalar(half * 2 + 6);
   key.position.copy(keyBase);
   key.target.position.set(0, 0, 0);
-  key.shadow.distance = half * 4 + 12;
+  const cam = key.shadow.camera;
+  Object.assign(cam, { left: -half, right: half, top: half, bottom: -half, near: 0.5, far: half * 4 + 12 });
+  cam.updateProjectionMatrix();
 }
 
 // -- camera and playfield -------------------------------------------------------------------
@@ -567,11 +571,11 @@ export function applyLook(next: Look): void {
       catch (e) { console.warn("environment:", e instanceof Error ? e.message : String(e)); }
     }
     scene.environment = envTex;
-    hemi.intensity = 0.3 / PI;
+    hemi.intensity = 0.3;
     renderer.toneMappingExposure = 0.92;
   } else {
     scene.environment = null;
-    hemi.intensity = 0.75 / PI;
+    hemi.intensity = 0.75;
     renderer.toneMappingExposure = 1.05;
   }
   renderer.ao = next.ao === "off" ? null : {
@@ -644,7 +648,7 @@ export function update(dtIn: number): void {
   const t = ambientTime;
   // Sunlight through a window: the key drifts a little and breathes in strength.
   key.position.set(keyBase.x + Math.sin(t * 0.07) * 1.2, keyBase.y, keyBase.z + Math.cos(t * 0.05) * 0.9);
-  key.intensity = (1.6 + Math.sin(t * 0.31) * 0.04 + Math.sin(t * 0.83) * 0.02) / PI;
+  key.intensity = (1.6 + Math.sin(t * 0.31) * 0.04 + Math.sin(t * 0.83) * 0.02);
   const m = b.motes;
   if (!m) return;
   const pos = m.pts.geometry.getAttribute("position") as BufferAttribute;
