@@ -583,10 +583,10 @@ export function applyLook(next: Look): void {
     samples: next.ao === "high" ? 16 : 8, resolution: next.budget.aoRes,
     denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: next.ao === "high" ? 6 : 4, rings: 2, samples: next.ao === "high" ? 16 : 8, radiusExponent: 2 },
   };
-  // The browser build's warm paper grade (display space): a gentle S-curve,
+  // The browser build's warm paper grade (display space): a 0.14 smoothstep S-curve (contrastCurve "s"),
   // a touch more saturation, cool lows / warm highs, the 0.2 vignette.
   renderer.grade = next.grade ? {
-    space: "display", contrast: 0.07, saturation: 1.07,
+    space: "display", contrastCurve: "s", contrast: 0.14, saturation: 1.07,
     shadows: [0.98, 0.99, 1.02], highlights: [1.02, 1.0, 0.975], split: [0.25, 0.85],
     vignette: { amount: 0.2, inner: 0.4, outer: 0.9 },
   } : null;
