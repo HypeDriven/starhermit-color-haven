@@ -1,70 +1,57 @@
 // The palette's region symbols (js/content.js SYMBOLS: ● ▲ ■ ◆ ★ ✚ ◐ ⬡),
 // which reinforce each colour's number so it never relies on colour
-// alone. The browser build drew them as font characters; fonts here need
-// not have them, so they are drawn as shapes: on the board's number
-// overlay (a 2D canvas path) and in the tray, the help and the results
-// (starhermit:draw).
+// alone. As in the browser build they are font characters, drawn in the
+// text's colour: a system face draws them where it has them, else the
+// engine's StarHermit Emoji, which covers all eight (text style). The board's
+// number overlay (a 2D canvas, baked once a cell changes) waits for that
+// font first (symbolsReady); the tray, the help and the results draw them
+// with starhermit:draw, which draws them once the font is in.
 import * as draw from "starhermit:draw";
-import type { OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
+import { fonts, OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
 
-type Pt = [number, number];
-const ring = (n: number, r: number, a0: number): Pt[] =>
-  Array.from({ length: n }, (_, i) => { const a = a0 + (i / n) * Math.PI * 2; return [Math.cos(a) * r, Math.sin(a) * r] as Pt; });
-const STAR: Pt[] = Array.from({ length: 10 }, (_, i) => {
-  const a = -Math.PI / 2 + (i * Math.PI) / 5, r = i % 2 ? 0.42 : 1;
-  return [Math.cos(a) * r, Math.sin(a) * r] as Pt;
-});
-const CROSS: Pt[] = [[-0.3, -0.95], [0.3, -0.95], [0.3, -0.3], [0.95, -0.3], [0.95, 0.3], [0.3, 0.3], [0.3, 0.95], [-0.3, 0.95], [-0.3, 0.3], [-0.95, 0.3], [-0.95, -0.3], [-0.3, -0.3]];
+export const SYMBOLS = ["●", "▲", "■", "◆", "★", "✚", "◐", "⬡"] as const;
+const FONT = "sans-serif";
+/** The glyph's ink box fills this share of the symbol's diameter (the old drawn shapes' size). */
+const FILL = 0.9;
+const REF = 100;
 
-/** Symbol `i`'s shape in unit space (y down): filled polygons, filled circles, outlines. */
-interface Shape { fill: Pt[][]; discs: [number, number, number][]; outline: { pts: Pt[] | null; circle: number; width: number } | null }
-const SHAPES: Shape[] = [
-  { fill: [], discs: [[0, 0, 0.82]], outline: null },                                      // ● disc
-  { fill: [[[0, -0.95], [0.95, 0.75], [-0.95, 0.75]]], discs: [], outline: null },         // ▲ triangle
-  { fill: [[[-0.78, -0.78], [0.78, -0.78], [0.78, 0.78], [-0.78, 0.78]]], discs: [], outline: null }, // ■ square
-  { fill: [[[0, -1], [0.78, 0], [0, 1], [-0.78, 0]]], discs: [], outline: null },          // ◆ diamond
-  { fill: [STAR], discs: [], outline: null },                                              // ★ star
-  { fill: [CROSS], discs: [], outline: null },                                             // ✚ cross
-  { fill: [[...ring(16, 0.82, Math.PI / 2).filter(([x]) => x <= 0.001), [0, -0.82]]], discs: [], outline: { pts: null, circle: 0.82, width: 0.16 } }, // ◐ half disc
-  { fill: [], discs: [], outline: { pts: ring(6, 0.9, -Math.PI / 2), circle: 0, width: 0.2 } }, // ⬡ hexagon outline
-];
+/** Settles once the faces the symbols need are in (the emoji font where no system face has them). */
+export const symbolsReady: Promise<unknown> = fonts.load(`${REF}px ${FONT}`, SYMBOLS.join("")).catch(() => undefined);
 
-/** Draws symbol `i` (0–7) at (cx, cy), `r` its radius, on a 2D canvas. */
-export function symbolCanvas(ctx: OffscreenCanvasRenderingContext2D, i: number, cx: number, cy: number, r: number, color: string): void {
-  const s = SHAPES[i % SHAPES.length]!;
-  ctx.fillStyle = color;
-  ctx.strokeStyle = color;
-  for (const poly of s.fill) {
-    ctx.beginPath();
-    poly.forEach(([x, y], k) => (k ? ctx.lineTo(cx + x * r, cy + y * r) : ctx.moveTo(cx + x * r, cy + y * r)));
-    ctx.closePath();
-    ctx.fill();
-  }
-  for (const [x, y, rr] of s.discs) { ctx.beginPath(); ctx.arc(cx + x * r, cy + y * r, rr * r, 0, Math.PI * 2); ctx.fill(); }
-  if (s.outline) {
-    ctx.lineWidth = s.outline.width * r;
-    ctx.beginPath();
-    if (s.outline.pts) {
-      s.outline.pts.forEach(([x, y], k) => (k ? ctx.lineTo(cx + x * r, cy + y * r) : ctx.moveTo(cx + x * r, cy + y * r)));
-      ctx.closePath();
-    } else ctx.arc(cx, cy, s.outline.circle * r, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+interface Ink { scale: number; dx: number; dy: number; asc: number }
+const inks = new Map<number, Ink>();
+let probe: OffscreenCanvasRenderingContext2D | null = null;
+/** Symbol `i`'s ink box at REF px: font size per unit of radius, and the centre's offset from (align center, alphabetic baseline). */
+function ink(i: number): Ink {
+  let m = inks.get(i);
+  if (m) return m;
+  probe ??= new OffscreenCanvas(4, 4).getContext("2d")!;
+  probe.font = `${REF}px ${FONT}`;
+  probe.textAlign = "center";
+  probe.textBaseline = "alphabetic";
+  const t = probe.measureText(SYMBOLS[i]!);
+  const w = t.actualBoundingBoxLeft + t.actualBoundingBoxRight, h = t.actualBoundingBoxAscent + t.actualBoundingBoxDescent;
+  const ext = Math.max(1, w, h);
+  m = { scale: (2 * FILL * REF) / ext, dx: (t.actualBoundingBoxRight - t.actualBoundingBoxLeft) / 2 / REF, dy: (t.actualBoundingBoxDescent - t.actualBoundingBoxAscent) / 2 / REF, asc: t.fontBoundingBoxAscent / REF };
+  if (fonts.check(`${REF}px ${FONT}`, SYMBOLS[i])) inks.set(i, m);
+  return m;
 }
 
-/** Draws symbol `i` (0–7) at (cx, cy) in window pixels, `r` its radius, with starhermit:draw. */
+/** Draws symbol `i` (0–7) centred at (cx, cy), `r` its radius, on a 2D canvas. */
+export function symbolCanvas(ctx: OffscreenCanvasRenderingContext2D, i: number, cx: number, cy: number, r: number, color: string): void {
+  const k = i % SYMBOLS.length, m = ink(k), size = m.scale * r;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = `${size}px ${FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(SYMBOLS[k]!, cx - m.dx * size, cy - m.dy * size);
+  ctx.restore();
+}
+
+/** Draws symbol `i` (0–7) centred at (cx, cy) in window pixels, `r` its radius, with starhermit:draw. */
 export function symbolDraw(i: number, cx: number, cy: number, r: number, color: string): void {
-  const s = SHAPES[i % SHAPES.length]!;
-  for (const poly of s.fill) draw.polygon(poly.map(([x, y]) => [cx + x * r, cy + y * r] as Pt), color);
-  for (const [x, y, rr] of s.discs) draw.circle(cx + x * r, cy + y * r, rr * r, color);
-  if (s.outline) {
-    const w = s.outline.width * r;
-    if (s.outline.pts) {
-      const p = s.outline.pts;
-      for (let k = 0; k < p.length; k++) {
-        const a = p[k]!, b = p[(k + 1) % p.length]!;
-        draw.line(cx + a[0] * r, cy + a[1] * r, cx + b[0] * r, cy + b[1] * r, color, w);
-      }
-    } else draw.strokeCircle(cx, cy, s.outline.circle * r, color, w);
-  }
+  const k = i % SYMBOLS.length, m = ink(k), size = m.scale * r;
+  // draw.text's y is the line box's top: the baseline sits the font's ascent below it.
+  draw.text(SYMBOLS[k]!, cx - m.dx * size, cy - (m.dy + m.asc) * size, { size, font: FONT, color, align: "center" });
 }

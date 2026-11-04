@@ -13,7 +13,7 @@
 | `native/main.ts` | entry: state machine, round lifecycle and snapshot, session events → sound/toast/announcement/board, Learn coach banner, input (actions, board taps, hover), results and leaderboard posting, lifecycle |
 | `native/screens.ts` | every screen, card, dialog and toast (`starhermit:ui`), layouts per window size, title petals, drawn glyphs |
 | `native/render.ts` | the paper board (`starhermit:scene`): table, frame, instanced tiles, number overlay canvas, focus ring, hover ghost, pigment puffs, motes, lights, post effects, picking |
-| `native/symbols.ts` | the eight palette symbols drawn as shapes (canvas paths and `starhermit:draw`) |
+| `native/symbols.ts` | the eight palette symbols as font characters (a system face, else StarHermit Emoji), centred on their ink box on the board canvas and with `starhermit:draw` |
 | `native/audio.ts` | sample one-shots, studio room-tone loop, rendered pentatonic pad (`starhermit:audio`) |
 | `native/platform.ts` | save (`saves`), foreign-save migration, game settings and legacy keys, device storage shim, player, invite, server clock, high-score posting |
 | `native/quality.ts` | the look per graphics tier/level (the old presets and budgets) |

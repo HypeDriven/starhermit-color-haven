@@ -12,9 +12,9 @@
 // levels (music 60 %, effects 80 %, ambience 40 %) are folded into each
 // sound's gain. The pad, which the browser build played with oscillators,
 // is rendered once into clips (createClip); the synthesized stand-ins it
-// played while a sample loaded are not ported. Clips load once the mixer
-// runs (natively at once, in a browser after the first press), one at a
-// time.
+// played while a sample loaded are not ported. Every clip loads at once in
+// onStart (each reaches the mixer when it is ready); the room tone and the
+// pad start once the mixer runs (in a browser after the first press).
 import { files } from "starhermit:engine";
 import { context, createClip, loadClip, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
 
@@ -24,22 +24,9 @@ const CAPTIONS: Record<string, string> = {
   fill: "region filled", hint: "hint used", invalid: "that region needs a different number", complete: "illustration complete",
   movesExhausted: "out of moves", achievement: "achievement unlocked", colorComplete: "color complete",
 };
-// The round's first sounds load first.
-const FIRST = ["uiTick", "select", "fill", "roundStart", "invalid", "undo", "hint"];
-
 const eventFiles = new Map<string, string[]>();
 const clips = new Map<string, AudioClip>();
-const queue: string[] = [];
-let loading = false;
-let wantClips = false;
-function load(name: string): void { if (!queue.includes(name) && !clips.has(name)) queue.push(name); }
-function pump(): void {
-  if (loading || !queue.length) return;
-  const name = queue.shift()!;
-  loading = true;
-  loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); loading = false; }, (e: unknown) => { console.warn(`sfx ${name}: ${String(e)}`); loading = false; });
-}
-/** Reads the manifest and asks for the clips; they load once the mixer runs (see update). */
+/** Reads the manifest and loads every clip at once (onStart); a cue whose clip is still loading is silent. */
 export function loadSfx(): void {
   try {
     const list = files.readJson("sfx/manifest.json") as unknown as { name?: string; event?: string }[];
@@ -50,7 +37,9 @@ export function loadSfx(): void {
       eventFiles.set(e.event, l);
     }
   } catch (e) { console.warn(`sfx manifest: ${String(e)}`); }
-  wantClips = true;
+  for (const name of new Set([...[...eventFiles.values()].flat(), "ambience-studio"])) {
+    loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${String(e)}`));
+  }
 }
 
 let captionFn: ((text: string) => void) | null = null;
@@ -68,7 +57,7 @@ export function play(event: string): void {
   if (!clip) return;
   const bus: Bus = event === "uiTick" ? "interface" : "effects";
   try { playClip(clip, { bus, gain: LEVEL.effects }); }
-  catch { clips.delete(file); load(file); } // a clip the mixer lost: load it again
+  catch { /* the mixer is full this frame: skip it */ }
 }
 
 // -- the pad ----------------------------------------------------------------------------------
@@ -87,7 +76,7 @@ function noteClip(freq: number): AudioClip {
 }
 const notes = new Map<number, AudioClip>();
 const NOTE_FREQS = [...SCALE, ...SCALE.map((f) => f * 2)];
-/** One rendered note a frame, once the samples are in; false when all are made. */
+/** One rendered note a frame; false when all are made. */
 function renderNext(): boolean {
   const f = NOTE_FREQS.find((x) => !notes.has(x));
   if (f == null) return false;
@@ -115,20 +104,11 @@ export function stopRound(): void {
 /** 0–1: the pad adds voices as the picture fills. */
 export function setMusicIntensity(x: number): void { intensity = Math.max(0, Math.min(1, x)); }
 
-/** Each frame: the samples once the mixer runs, one rendered note a frame,
- * then the room tone and the pad's notes by mixer time. */
+/** Each frame: one rendered note a frame, then (once the mixer runs) the
+ * room tone and the pad's notes by mixer time. */
 export function update(): void {
-  if (context.state !== "running") return;
-  if (wantClips) {
-    wantClips = false;
-    for (const e of FIRST) for (const name of eventFiles.get(e) ?? []) load(name);
-    for (const l of eventFiles.values()) for (const name of l) if (name !== "ambience-studio") load(name);
-    load("ambience-studio");
-  }
-  pump();
-  if (loading || queue.length) return;
   try { if (renderNext()) return; } catch (e) { console.warn(`audio: ${String(e)}`); return; }
-  if (!inRound) return;
+  if (context.state !== "running" || !inRound) return;
   const amb = clips.get("ambience-studio");
   if (!ambStarted && amb) {
     ambStarted = true;

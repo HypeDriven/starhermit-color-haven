@@ -27,7 +27,7 @@ import {
 } from "starhermit:scene";
 import { OffscreenCanvas } from "starhermit:canvas";
 import type { Look } from "./quality.ts";
-import { symbolCanvas } from "./symbols.ts";
+import { symbolCanvas, symbolsReady } from "./symbols.ts";
 
 const PI = Math.PI;
 /* Authored framing constants (js/render.js CAMERA and TILE). */
@@ -518,6 +518,8 @@ function updateMarkers(state: BoardState): void {
   if (hoverCell >= 0) setHover(hoverCell);
 }
 
+// A board baked before the symbols' faces were in redraws its cells once they are.
+void symbolsReady.then(() => { if (board && lastState) { board.drawn.fill(-1); drawNumbers(lastState); } });
 /** The number overlay: each region's number and symbol on bare paper, a light symbol watermark once filled. Only changed cells are redrawn. */
 function drawNumbers(state: BoardState): void {
   const b = board!;

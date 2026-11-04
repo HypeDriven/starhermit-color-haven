@@ -70,21 +70,11 @@ function button(b: Btn, width: number | null = null): void {
   }
   if (ui.style(...style, s).id(b.id).button(b.text, opts)) b.act();
 }
-/** Buttons at their own widths in rows that wrap at `width` (CSS flex-wrap). */
+/** Buttons at their own widths in an engine row that wraps at `width` (CSS flex-wrap). */
 function flow(label: string, list: Btn[], width: number, align: "start" | "center" | "end" = "center", gap = 10): void {
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  for (const b of list) {
-    const bw = Math.min(width, b.width ?? buttonWidth(b.text, b.style ?? PLAIN));
-    if (rows[rows.length - 1]!.length && used + gap + bw > width) { rows.push([]); used = 0; }
-    used += (rows[rows.length - 1]!.length ? gap : 0) + bw;
-    rows[rows.length - 1]!.push(b);
-  }
-  ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => {
-      for (const b of row) button(b, b.width ?? (buttonWidth(b.text, b.style ?? PLAIN) > width ? width : null));
-    }, { spacing: gap, align: "center" }));
-  }, { spacing: gap, align, width });
+  ui.row(label, () => {
+    for (const b of list) button(b, b.width ?? (buttonWidth(b.text, b.style ?? PLAIN) > width ? width : null));
+  }, { wrap: true, width, gap, justify: align, align: "center" });
 }
 /** Text up to `width` wide: one label when it fits, else a paragraph. */
 function para(text: string, width: number, cls = "body", id?: string, center = false): void {
