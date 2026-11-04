@@ -7,12 +7,12 @@ cover=cover.jpg
 # StarHermit engine script game: one package, played natively by the
 # StarHermit client and in browsers by the engine's web runtime. Browsers open
 # launch=index.html, the loader `npm run package` writes (it pins the engine
-# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# on engine.starhermit.com by hash; never edit it). Re-run `npm run package`
 # after every change and commit index.html + starhermit-files.json.
 launch=index.html
 engine.api=1
 engine.entry=native/main.ts
-engine.version=1.36.0
+engine.version=1.36.1
 engine.minor=32
 engine.capabilities=platform,storage,clipboard
 
