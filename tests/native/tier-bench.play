@@ -1,0 +1,42 @@
+# Graphics-tier bench (tools/engine-tier-bench.mjs): Journey stage 1 (First
+# Strokes, a fixed board; the moves journey-first-stage.play makes), settled,
+# then seven fills along the top row measured with their animations.
+until 300 Color Haven
+frames 30
+click =Journey
+until 60 Every 8th stage is a mastery test
+frames 10
+click Stage 1, First Strokes
+until 120 Par time
+frames 120
+measure start
+key Digit1 1
+frames 1
+key Enter 1
+frames 40
+key ArrowRight 1
+frames 1
+key Enter 1
+frames 40
+key ArrowRight 1
+frames 1
+key Enter 1
+frames 40
+key ArrowRight 1
+frames 1
+key Enter 1
+frames 40
+key ArrowRight 1
+frames 1
+key Enter 1
+frames 40
+key ArrowRight 1
+frames 1
+key Enter 1
+frames 40
+key ArrowRight 1
+frames 1
+key Enter 1
+frames 40
+frames 300
+measure stop

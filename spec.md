@@ -16,7 +16,7 @@
 | `native/symbols.ts` | the eight palette symbols as font characters (a system face, else StarHermit Emoji), centred on their ink box on the board canvas and with `starhermit:draw` |
 | `native/audio.ts` | sample one-shots, studio room-tone loop, rendered pentatonic pad (`starhermit:audio`) |
 | `native/platform.ts` | save (`saves`), foreign-save migration, game settings and legacy keys, device storage shim, player, invite, server clock, high-score posting |
-| `native/quality.ts` | the look per graphics tier/level (the old presets and budgets) |
+| `native/quality.ts` | the look per graphics level: engine effects from `levelSettings()`, the old presets' art and budgets by tier |
 | `native/i18n.ts`, `native/style.ts` | locale from the runtime's interface language; UI theme and `assets/ui-style.json` |
 | `js/rules.js`, `js/content.js`, `js/session.js` | rules engine, content generators, session with replay envelope (ES modules shared with `server.js` and the tests; the session takes the host's clock through `GameSession.clock`) |
 | `js/store.js` | the pure save model: document, merge, browser-save migration, settings checks, completion records, snapshot, local boards |
@@ -132,18 +132,18 @@ The pointer's hover ghosts the region's colour (bright when it matches the selec
 
 **Motion.** Fill: 260 ms ease-out drop with 10 pigment puffs; undo: 4 puffs; invalid: 300 ms wobble; complete: 6 bursts of 24 puffs; ambient: dust motes drift up through the light and the key light drifts and breathes. Reduced motion (the runtime's preference) drops tweens, puffs, ambient motion and the title petals and shortens the results delay.
 
-**Graphics levels** (`native/quality.ts`; the runtime's Options choose the level, render scale, frame-rate limit; it holds shadow-map size and MSAA samples to the level). The old presets map to the runtime's quality tiers; counts scale within a tier with the level (×1.64 a level, ≤ 4×):
+**Graphics levels** (`native/quality.ts`; the runtime's Options choose the level, render scale, frame-rate limit). Shadows and their map size, ambient occlusion (resolution, samples), the grade and anti-aliasing are the level's own (`levelSettings()`; shown at each tier's anchor level: quantum, molecular, terrestrial, galactic); the game's art follows the old presets by quality tier; puffs and motes scale with the level's particle budget over the anchor's (≤ 4×):
 
 | | low | balanced | high | ultra |
 |---|---|---|---|---|
 | shadows | off | 1024 | 2048 | 4096 |
-| ambient occlusion | off | off | on | high |
+| ambient occlusion | off | off | ½-res, 8 samples | full, 16 samples |
 | grade / studio light / paper detail / ambient motion | off | on | on | on |
-| anti-aliasing | off | FXAA | SMAA | MSAA |
+| anti-aliasing | off | FXAA | SMAA | MSAA 4 |
 | materials | Lambert | standard | standard | standard (the old Ultra paper sheen is not drawn by the engine) |
 | grain px (paper / linen / wood) | 64/64/128 | 128/128/256 | 128/128/256 | 256/256/512 |
 | bevel segments, overlay px per cell | 1, 64 | 1, 80 | 2, 96 | 3, 128 |
-| puffs, motes (at the tier's first level) | 0, 12 | 300, 24 | 800, 36 | 1200, 60 |
+| puffs, motes (at the tier's anchor level) | 0, 12 | 300, 24 | 800, 36 | 1200, 60 |
 
 ## 9. Audio
 
