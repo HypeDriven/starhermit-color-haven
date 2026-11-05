@@ -20,7 +20,7 @@
 | `native/i18n.ts`, `native/style.ts` | locale from the runtime's interface language; UI theme and `assets/ui-style.json` |
 | `js/rules.js`, `js/content.js`, `js/session.js` | rules engine, content generators, session with replay envelope (ES modules shared with `server.js` and the tests; the session takes the host's clock through `GameSession.clock`) |
 | `js/store.js` | the pure save model: document, merge, browser-save migration, settings checks, completion records, snapshot, local boards |
-| `js/strings.js`, `js/i18n.js`, `js/platform-strings.js` | string tables (nine locales) and lookup |
+| `assets/strings.json` | string tables (nine locales) and lookup |
 | `tools/ui-style.css` → `assets/ui-style.json` | the class-based style sheet (`npm run css`) |
 | `index.html`, `starhermit-files.json` | the engine's web loader and file index (`npm run package`; never edited by hand) |
 | `score-script.js` | platform script that range-checks and records `high-score` results |
@@ -151,7 +151,7 @@ The pointer's hover ghosts the region's colour (bright when it matches the selec
 
 ## 10. Localization
 
-Nine locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT); English text is the key (`js/strings.js`, regional tables carry differences; en-GB spelling derived). The locale follows the runtime's interface language (`preferences().language`: Options › Language, else the account's preferred language, else the device's) and switches live; account lines come from `js/platform-strings.js`. `tests/i18n.test.mjs` checks every key `native/*.ts`, the captions and the content use is translated with intact placeholders, and that no table keeps an unused key.
+Nine locales (en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT); English text is the key (`assets/strings.json`, regional tables carry differences; en-GB spelling derived). The locale follows the runtime's interface language (`preferences().language`: Options › Language, else the account's preferred language, else the device's) and switches live; account lines come from `js/platform-strings.js`. `tests/i18n.test.mjs` checks every key `native/*.ts`, the captions and the content use is translated with intact placeholders, and that no table keeps an unused key.
 
 ## 11. Accessibility
 
@@ -172,7 +172,7 @@ Every control is a UI widget with a name (palette buttons: "Color N, name, K reg
 - `npm test` = `test:unit` + `test:native`.
   - `tests/rules.test.mjs` (1421 assertions: RNG, generation/validation, journey, dailies, every command path, terminals, scoring, replay, tie-breaks).
   - `tests/store.test.mjs` (`node --test`): merge, the engine document, the browser cloud save as foreign text, settings keys, completion records and stars, journey map, snapshot round-trip and refusals, local boards (ranking, no envelope, board cap).
-  - `tests/i18n.test.mjs`: translations complete and unused rows gone; the classic `js/i18n.js` switches locale.
+  - `tests/i18n.test.mjs`: translations complete and unused rows gone.
   - `tests/native.mjs`: the committed web index matches the files, `tsc` (TypeScript 5.9, no skipLibCheck), `starhermit check .` with no warnings, then every `tests/native/*.play` as a guest `--render-check`: `learn.play` (Play → three lessons → results → title), `journey-first-stage.play` (map → stage 1 with a slip, undo and hint → results → stage 2), `challenge-ledger.play` (Strict ledger 16×16 → results → local leaderboard → Home), `screens.play` (settings toggles, help, pause and its dialogs, leave and Continue, Score chase with a typed seed, journey map closed by Escape). The board scripts are generated from the content by `tools/gen-play.mjs` (`npm run plays`).
 - `npm run test:browser` (`tools/browser-play.mjs`): the packaged loader in headless Chrome at 1366×768, 390×844 and 844×390: title, Learn by keys, fill, hint, pause/resume, board and tray taps; fails on console errors/warnings or the runtime's error screen. `~/games/tools/engine-web-smoke.mjs` loads it at desktop and phone.
 - `npm run test:server` (`tests/server.smoke.mjs`, against `node server.js 8091`): the dev server's board API.

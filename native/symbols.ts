@@ -1,8 +1,8 @@
 // The palette's region symbols (js/content.js SYMBOLS: ● ▲ ■ ◆ ★ ✚ ◐ ⬡),
 // which reinforce each colour's number so it never relies on colour
 // alone. As in the browser build they are font characters, drawn in the
-// text's colour: a system face draws them where it has them, else the
-// engine's StarHermit Emoji, which covers all eight (text style). The board's
+// text's colour, in the engine's StarHermit Emoji (all eight, text style; the
+// family named so a system face that has them does not draw first). The board's
 // number overlay (a 2D canvas, baked once a cell changes) waits for that
 // font first (symbolsReady); the tray, the help and the results draw them
 // with starhermit:draw, which draws them once the font is in.
@@ -10,7 +10,8 @@ import * as draw from "starhermit:draw";
 import { fonts, OffscreenCanvas, type OffscreenCanvasRenderingContext2D } from "starhermit:canvas";
 
 export const SYMBOLS = ["●", "▲", "■", "◆", "★", "✚", "◐", "⬡"] as const;
-const FONT = "sans-serif";
+const FONT = "'StarHermit Emoji', sans-serif";
+const DRAW_FONT = "StarHermit Emoji";
 /** The glyph's ink box fills this share of the symbol's diameter (the old drawn shapes' size). */
 const FILL = 0.9;
 const REF = 100;
@@ -53,5 +54,5 @@ export function symbolCanvas(ctx: OffscreenCanvasRenderingContext2D, i: number, 
 export function symbolDraw(i: number, cx: number, cy: number, r: number, color: string): void {
   const k = i % SYMBOLS.length, m = ink(k), size = m.scale * r;
   // draw.text's y is the line box's top: the baseline sits the font's ascent below it.
-  draw.text(SYMBOLS[k]!, cx - m.dx * size, cy - (m.dy + m.asc) * size, { size, font: FONT, color, align: "center" });
+  draw.text(SYMBOLS[k]!, cx - m.dx * size, cy - (m.dy + m.asc) * size, { size, font: DRAW_FONT, color, align: "center" });
 }

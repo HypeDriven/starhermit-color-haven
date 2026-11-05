@@ -5,7 +5,7 @@
 // into with the coach banner above it and the toast over it, the Actions
 // and Score preview cards, the palette tray) and the dialogs (mode setup,
 // the journey map, results with the score breakdown, pause, settings, help,
-// the leaderboard), the page toast and the caption strip. The browser's
+// the leaderboard), and the caption strip. The browser's
 // media queries are layouts picked by the window's logical size: wide
 // (≥ 1024 px: the rails docked beside the board), stacked (narrower: the
 // cards in rows under the board), phone portrait (≤ 640 px wide: the
@@ -35,17 +35,15 @@ import { symbolDraw } from "./symbols.ts";
 // ------------------------------------------------------------------ layout
 interface Layout { lw: number; lh: number; sc: number; ts: number; ox: number; oy: number; wide: boolean; stacked: boolean; phone: boolean; shortLand: boolean }
 function layoutNow(): Layout {
-  const f = frame();
-  const pr = ui.preferences();
-  const sc = pr.scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const v = ui.viewport!();
+  const sc = v.scale;
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height);
   const shortLand = lw > lh && lh <= 500;
   const phone = !shortLand && lw <= 640 && lh >= lw;
   // Side rails from 1024 px (the browser build's breakpoint), and on any landscape window from 800 px
   // (the stacked cards would leave the board a sliver there).
   const wide = !shortLand && !phone && (lw >= 1024 || (lw > lh && lw >= 800));
-  return { lw, lh, sc, ts: pr.textScale, ox: sa.left / sc, oy: sa.top / sc, wide, stacked: !wide && !phone && !shortLand, phone, shortLand };
+  return { lw, lh, sc, ts: ui.preferences().textScale, ox: v.x, oy: v.y, wide, stacked: !wide && !phone && !shortLand, phone, shortLand };
 }
 const lastHeight = new Map<string, number>();
 
@@ -151,6 +149,8 @@ function art(id: string, tex: Texture | null, w: number, h: number): void {
 // ------------------------------------------------------------------ title petals (js/title-fx.js)
 const PETAL_COLORS = ["#e0604e", "#e8a33d", "#5f9e52", "#5d9fd6", "#8e6cc9", "#d96f9e", "#3fa39a"];
 interface Petal { x: number; y: number; s: number; vy: number; sway: number; ph: number; rot: number; vr: number; c: string; a: number }
+/** Two quadratic arcs from tip to tip, a unit tall each way. */
+const PETAL = "M0 -1Q.8 0 0 1Q-.8 0 0 -1Z";
 let petals: Petal[] = [];
 let petalSize = [0, 0];
 let petalTime = 0;
@@ -178,12 +178,9 @@ function drawPetals(L: Layout): void {
     const x = p.x + Math.sin(petalTime * 0.6 + p.ph) * p.sway;
     const c = Math.cos(p.rot), s = Math.sin(p.rot);
     const at = (px: number, py: number, dy = 0): [number, number] => [(L.ox + x + px * c - py * s) * sc, (L.oy + p.y + px * s + py * c + dy) * sc];
-    // Two quadratic arcs from tip to tip.
-    const pts: [number, number][] = [];
-    for (let i = 0; i <= 8; i++) { const t = i / 8; pts.push([2 * (1 - t) * t * p.s * 0.8, -p.s + 2 * p.s * t]); }
-    for (let i = 1; i < 8; i++) { const t = i / 8; pts.push([-2 * (1 - t) * t * p.s * 0.8, p.s - 2 * p.s * t]); }
-    draw.polygon(pts.map(([px, py]) => at(px, py, 2)), alpha("#50381e", 0.1 * p.a));
-    draw.polygon(pts.map(([px, py]) => at(px, py)), alpha(p.c, p.a));
+    const px = (L.ox + x) * sc, py = (L.oy + p.y) * sc, scale = p.s * sc;
+    draw.path(PETAL, px, py + 2 * sc, { fill: alpha("#50381e", 0.1 * p.a), scale, rotation: p.rot });
+    draw.path(PETAL, px, py, { fill: alpha(p.c, p.a), scale, rotation: p.rot });
     const a = at(0, -p.s * 0.7), b = at(0, p.s * 0.7);
     draw.line(a[0], a[1], b[0], b[1], alpha("#ffffff", 0.45 * p.a), Math.max(1, 0.8 * sc));
   }
@@ -197,7 +194,7 @@ export function drawScreens(): void {
   if (app.screen === "title" || !session) titleScreen(L);
   else gameScreen(L);
   overlays(L);
-  toasts(L);
+  captions();
   if (app.focusNext) {
     const age = f.frame - app.openedFrame;
     if (age >= 1) ui.setFocus(app.focusNext);
@@ -886,16 +883,9 @@ function scoresDialog(L: Layout): void {
 }
 
 // ------------------------------------------------------------------ toasts and captions
-function toasts(L: Layout): void {
+function captions(): void {
   if (app.caption) {
     const text = "♪ " + tr(app.caption.text);
     ui.place("captions", { anchor: "top", y: 60 }, () => ui.style("captions").id("caption-text").label(text.replace("♪ ", "")), { style: "captions" });
   }
-  if (!app.pageToast) return;
-  const text = app.pageToast.text();
-  const w = Math.min(L.lw - 32, 512);
-  ui.place("page-toast", { anchor: "bottom", y: 20 }, () => {
-    if (textWidth(text, "page-toast") + 40 <= w) ui.style("page-toast").id("page-toast").label(text);
-    else ui.style("page-toast").id("page-toast").paragraph(text, w - 34);
-  }, { width: w, align: "center" });
 }

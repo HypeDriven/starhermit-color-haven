@@ -20,7 +20,7 @@
 // (GameSession.clock) counts them, so pauses, a hidden window and slow
 // frames never cost time and play scripts replay exactly.
 import { clipboard, frame, levelSettings, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
-import { onAction, onPointerButton, onPointerMove, onTouch, vibrate } from "starhermit:input";
+import { onAction, onGesture, onPointerMove, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, requestSignIn } from "starhermit:platform";
 import { TERMINAL, hashString, listLegalActions } from "../js/rules.js";
@@ -62,7 +62,6 @@ export const app = {
   /** The coach banner above the board: its text (re-read in the current language), tappable when it has an action. */
   banner: null as { text: () => string; action: (() => void) | null; until: number | null } | null,
   toast: null as { text: () => string; until: number } | null,
-  pageToast: null as { text: () => string; until: number } | null,
   caption: null as { text: string; until: number } | null,
   results: null as Results | null,
   resultsAt: null as number | null,
@@ -106,7 +105,7 @@ export function announce(text: string, assertive = false): void {
 /** The round's toast (2.6 s), over the board; `text` re-reads in the current language. */
 export function toast(text: () => string, seconds = 2.6): void { app.toast = { text, until: now() + seconds }; }
 /** A short confirmation on any screen (3.5 s). */
-export function pageToast(text: () => string): void { app.pageToast = { text, until: now() + 3.5 }; announce(text()); }
+export function pageToast(text: () => string): void { ui.toast!(text(), { duration: 3.5, style: "page-toast", dismissible: false }); }
 export function banner(text: (() => string) | null, seconds: number | null = null, action: (() => void) | null = null): void {
   app.banner = text ? { text, action, until: seconds == null ? null : now() + seconds } : null;
 }
@@ -566,32 +565,15 @@ onAction((e) => {
   }
 });
 
-// Board taps fill a region (a tap, not a drag: within 12 px and 500 ms); the pointer's hover previews it.
-let down: { x: number; y: number; at: number } | null = null;
-let lastTouch = -1e9;
-function boardDown(x: number, y: number): void { down = canAct() && !ui.pointerOver() ? { x, y, at: now() } : null; }
-function boardUp(x: number, y: number): void {
-  const d = down;
-  down = null;
-  if (!d || !canAct()) return;
-  if (Math.hypot(x - d.x, y - d.y) > 12 * frame().scale || now() - d.at > 0.5) return;
-  const cell = render.pick(x, y);
+// Board taps fill a region (the engine's tap: within 12 px, under 500 ms); the pointer's hover previews it.
+onGesture!((e) => {
+  if (e.type !== "tap" || !canAct() || ui.pointerOver()) return;
+  const cell = render.pick(e.x, e.y);
   if (cell >= 0) { ui.setFocus(null); fillCell(cell); }
-}
-onPointerButton((e) => {
-  if (e.button !== 0 || now() - lastTouch < 0.6) return;
-  if (e.pressed) boardDown(e.x, e.y); else boardUp(e.x, e.y);
 });
 onPointerMove((x, y) => {
   if (app.screen !== "game" || !session) return;
   render.setHover(canAct() && !ui.pointerOver() ? render.pick(x, y) : -1);
-});
-onTouch((e) => {
-  if (!e.primary || e.control) return;
-  lastTouch = now();
-  if (e.phase === "start") boardDown(e.x, e.y);
-  else if (e.phase === "end") boardUp(e.x, e.y);
-  else if (e.phase === "cancel") down = null;
 });
 
 // ------------------------------------------------------------------ boot and lifecycle
@@ -638,7 +620,6 @@ onUpdate((dt) => {
   syncPause();
   const t = now();
   if (app.toast && app.toast.until < t) app.toast = null;
-  if (app.pageToast && app.pageToast.until < t) app.pageToast = null;
   if (app.caption && app.caption.until < t) app.caption = null;
   if (app.banner && app.banner.until != null && app.banner.until < t) app.banner = null;
   if (app.resultsAt != null && t >= app.resultsAt) {

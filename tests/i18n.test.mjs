@@ -1,12 +1,11 @@
 // Localization coverage: every English key the engine client (native/*.ts)
 // and the content show is translated in every locale (en-GB → en-US,
 // es-ES → es-419, fr-CA → fr-FR inherit), placeholders and markup survive,
-// no table keeps a key nothing shows, and the classic js/i18n.js switches
-// locale as native/i18n.ts drives it.
+// and no table keeps a key nothing shows. Locale chains are the engine's strings.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { loadTables, codeKeys, audit, bootI18n } from './i18n-common.mjs';
+import { codeKeys, audit } from './i18n-common.mjs';
 import { TIERS, ACHIEVEMENTS, buildPalette, journeyStages, tutorialLessons } from '../js/content.js';
 
 const ROOT = new URL('../', import.meta.url);
@@ -31,18 +30,6 @@ export function usedKeys() {
 }
 
 test('every used key is translated in every locale; placeholders intact', () => {
-  assert.deepEqual(audit(loadTables(ROOT, 'js/strings.js', 'HV_STRINGS'), usedKeys()), []);
+  assert.deepEqual(audit(JSON.parse(read('assets/strings.json')), usedKeys()), []);
 });
 
-test('the locale switches as the engine client sets it, with the regional tables', () => {
-  const { I18N } = bootI18n(ROOT, { strings: 'js/strings.js', i18n: 'js/i18n.js', global: 'HVI18N' });
-  assert.equal(I18N.lang, 'en-US');
-  assert.equal(I18N.setLocale('de-DE'), 'de-DE');
-  assert.equal(I18N.T('Resume'), 'Fortsetzen');
-  I18N.setLocale('fr-CA');
-  assert.equal(I18N.T('Score preview'), 'Aperçu du pointage');
-  I18N.setLocale('en-GB');
-  assert.equal(I18N.T('Resume'), 'Resume');
-  assert.equal(I18N.setLocale('xx-YY'), 'en-US');
-  assert.equal(I18N.T('Moves left: {n}', { n: 3 }), 'Moves left: 3');
-});

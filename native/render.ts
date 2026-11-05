@@ -19,12 +19,14 @@
 // overlay's dark-ink re-weighting for linear blending is not needed (the
 // engine blends the overlay as the canvas drew it).
 import {
-  ACESFilmicToneMapping, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, DirectionalLight, DoubleSide,
+  ACESFilmicToneMapping, BoxGeometry, CanvasTexture, Color, DirectionalLight, DoubleSide,
   DynamicDrawUsage, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial,
-  MeshStandardMaterial, OrthographicCamera, PMREMGenerator, Plane, PlaneGeometry, Points, PointsMaterial, Raycaster,
+  MeshStandardMaterial, OrthographicCamera, PMREMGenerator, Plane, PlaneGeometry, PointsMaterial, Raycaster,
   RepeatWrapping, RingGeometry, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, Vector3, pointerToNdc, renderer, scene,
   type Material, type Texture,
+  ParticleEmitter,
 } from "starhermit:scene";
+import { createRandom } from "starhermit:engine";
 import { OffscreenCanvas } from "starhermit:canvas";
 import type { Look } from "./quality.ts";
 import { symbolCanvas, symbolsReady } from "./symbols.ts";
@@ -65,12 +67,12 @@ scene.add(rim);
 let envTex: Texture | null = null;
 
 // -- the board --------------------------------------------------------------------------
-interface Particle { life: number; ttl: number; x: number; y: number; z: number; vx: number; vy: number; vz: number }
 interface Board {
   group: Group; level: Level; palette: PaletteEntry[]; theme: Theme; tiles: InstancedMesh;
   canvas: OffscreenCanvas; tex: CanvasTexture; drawn: number[]; ring: Mesh; ringMat: MeshBasicMaterial; ghost: Mesh; ghostMat: MeshBasicMaterial;
-  particles: { mesh: InstancedMesh; data: Particle[]; cursor: number } | null;
-  motes: { pts: Points; seeds: { x: number; y: number; z: number; p: number; v: number }[]; span: [number, number, number]; mat: PointsMaterial } | null;
+  /** Pigment puffs: an emitter per palette colour (an emitter has one colour at a time). */
+  puffs: ParticleEmitter[];
+  motes: { emitter: ParticleEmitter; mat: PointsMaterial } | null;
 }
 let board: Board | null = null;
 let lastState: BoardState | null = null;
@@ -83,19 +85,20 @@ const tmpC = new Color();
 
 /** Deterministic procedural textures (visual only; never touch game RNG). */
 function texRng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const r = createRandom(seed);
+  return () => r.float();
 }
 /** Cut-paper grain: near-white fibres + soft deckled edge (multiplies instance colour). */
 function paperCanvas(size: number): OffscreenCanvas {
   const c = new OffscreenCanvas(size, size);
   const ctx = c.getContext("2d");
   const r = texRng(0xC0101);
+  const grain = createRandom(0xC0102).fill(new Float32Array(size * size));
   const img = ctx.createImageData(size, size);
   for (let i = 0; i < size * size; i++) {
     const x = i % size, y = (i / size) | 0;
     const edge = Math.min(x, y, size - 1 - x, size - 1 - y) / size;
-    const v = Math.max(0, Math.min(255, 244 + r() * 11 - (edge < 0.05 ? (0.05 - edge) * 260 : 0)));
+    const v = Math.max(0, Math.min(255, 244 + grain[i]! * 11 - (edge < 0.05 ? (0.05 - edge) * 260 : 0)));
     img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
     img.data[i * 4 + 3] = 255;
   }
@@ -196,6 +199,8 @@ function disposeBoard(): void {
     if (mat) for (const x of Array.isArray(mat) ? mat : [mat]) x.dispose();
   });
   board.tex.dispose();
+  for (const e of board.puffs) e.dispose();
+  board.motes?.emitter.dispose();
   scene.remove(board.group);
   board = null;
   anims = [];
@@ -290,18 +295,21 @@ export function buildBoard(level: Level, palette: PaletteEntry[], theme: Theme):
   ghost.renderOrder = 3;
   g.add(ghost);
 
-  // Pooled pigment puffs.
+  // Pigment puffs: planes shrinking to nothing as they fall.
   const pCount = look.budget.particles;
-  let particles: Board["particles"] = null;
+  const puffs: ParticleEmitter[] = [];
   if (pCount > 0) {
-    const mesh = new InstancedMesh(new PlaneGeometry(0.12, 0.12), new MeshBasicMaterial({ transparent: true, opacity: 0.85, depthWrite: false }), pCount);
-    mesh.instanceMatrix.setUsage(DynamicDrawUsage);
-    mesh.frustumCulled = false;
-    const zero = new Matrix4().makeScale(0, 0, 0);
-    for (let i = 0; i < pCount; i++) { mesh.setMatrixAt(i, zero); mesh.setColorAt(i, paper); }
-    mesh.instanceMatrix.needsUpdate = true;
-    g.add(mesh);
-    particles = { mesh, data: Array.from({ length: pCount }, () => ({ life: 0, ttl: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 })), cursor: 0 };
+    const geometry = new PlaneGeometry(0.12, 0.12);
+    const material = new MeshBasicMaterial({ transparent: true, opacity: 0.85, depthWrite: false });
+    palette.forEach((entry, i) => {
+      const e = new ParticleEmitter({
+        capacity: pCount, geometry, material, seed: i + 1, space: "local", color: entry.hex, life: [0.5, 1],
+        velocity: [0, 2, 0], velocitySpread: [1.4, 0.8, 1.4], gravity: [0, -3.2, 0], size: [1, 0],
+      });
+      e.frustumCulled = false;
+      g.add(e);
+      puffs.push(e);
+    });
   }
 
   // Ambient dust motes drifting in the sunlight.
@@ -309,26 +317,20 @@ export function buildBoard(level: Level, palette: PaletteEntry[], theme: Theme):
   if (look.ambient && look.budget.motes > 0) {
     const count = look.budget.motes;
     const top = (palette.length - 1) * TILE.LAYER_STEP;
-    const r = texRng(w * 131 + h);
-    const pos = new Float32Array(count * 3);
-    const seeds = [];
-    for (let i = 0; i < count; i++) {
-      const s = { x: (r() - 0.5) * (w + 2), y: top + 0.4 + r() * 3.5, z: (r() - 0.5) * (h + 2), p: r() * PI * 2, v: 0.06 + r() * 0.1 };
-      seeds.push(s);
-      pos[i * 3] = s.x; pos[i * 3 + 1] = s.y; pos[i * 3 + 2] = s.z;
-    }
-    const mgeo = new BufferGeometry();
-    const attr = new BufferAttribute(pos, 3);
-    attr.setUsage(DynamicDrawUsage);
-    mgeo.setAttribute("position", attr);
     const mmat = new PointsMaterial({ color: 0xfff4dc, size: 2.5, sizeAttenuation: false, transparent: true, opacity: 0.3, depthWrite: false });
-    const pts = new Points(mgeo, mmat);
-    pts.frustumCulled = false;
-    g.add(pts);
-    motes = { pts, seeds, span: [w + 2, h + 2, top], mat: mmat };
+    // Dust drifting in the sunlight, over the board.
+    const emitter = new ParticleEmitter({
+      capacity: count, material: mmat, seed: w * 131 + h, space: "local", shape: "box", extent: [(w + 2) / 2, 1.85, (h + 2) / 2],
+      velocity: [0, 0.038, 0], velocitySpread: [0.06, 0.018, 0.05], life: [10, 120], rate: count / 65,
+    });
+    emitter.position.y = top + 2.15;
+    emitter.frustumCulled = false;
+    emitter.burst(count);
+    g.add(emitter);
+    motes = { emitter, mat: mmat };
   }
 
-  board = { group: g, level, palette, theme, tiles, canvas, tex: otex, drawn: new Array(n).fill(-1), ring, ringMat, ghost, ghostMat, particles, motes };
+  board = { group: g, level, palette, theme, tiles, canvas, tex: otex, drawn: new Array(n).fill(-1), ring, ringMat, ghost, ghostMat, puffs, motes };
   fitShadow();
   applyAmbient();
   hoverCell = -1;
@@ -464,20 +466,9 @@ function celebrate(): void {
 }
 function spawnPuff(cell: number, count: number): void {
   const b = board;
-  const p = b && b.particles;
-  if (!b || !p) return;
+  if (!b) return;
   const o = cellWorld(cell);
-  tmpC.set(b.palette[b.level.targets[cell]!]!.hex);
-  for (let k = 0; k < count; k++) {
-    const d = p.data[p.cursor]!;
-    d.life = 0; d.ttl = 0.5 + Math.random() * 0.5;
-    d.x = o.x; d.y = o.y + 0.15; d.z = o.z;
-    const a = Math.random() * PI * 2, sp = 0.6 + Math.random() * 1.4;
-    d.vx = Math.cos(a) * sp; d.vz = Math.sin(a) * sp; d.vy = 1.2 + Math.random() * 1.6;
-    p.mesh.setColorAt(p.cursor, tmpC);
-    p.cursor = (p.cursor + 1) % p.data.length;
-  }
-  if (p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true;
+  b.puffs[b.level.targets[cell]!]?.burst(count, [o.x, o.y + 0.15, o.z]);
 }
 
 /** Hover preview: the cell's colour ghosted over it while a colour is selected. */
@@ -556,7 +547,7 @@ function drawNumbers(state: BoardState): void {
 // -- the look ---------------------------------------------------------------------------------
 function applyAmbient(): void {
   const on = !!look && look.ambient && !reducedMotion;
-  if (board && board.motes) board.motes.pts.visible = on;
+  if (board && board.motes) board.motes.emitter.visible = on;
   if (!on) { key.position.copy(keyBase); key.intensity = KEY_INTENSITY; }
 }
 export function applyLook(next: Look): void {
@@ -632,23 +623,6 @@ export function update(dtIn: number): void {
   }
   const b = board;
   if (!b) return;
-  const p = b.particles;
-  if (p) {
-    let any = false;
-    for (let i = 0; i < p.data.length; i++) {
-      const d = p.data[i]!;
-      if (d.ttl <= 0) continue;
-      d.life += dt;
-      any = true;
-      if (d.life >= d.ttl) { d.ttl = 0; tmpM.makeScale(0, 0, 0); p.mesh.setMatrixAt(i, tmpM); continue; }
-      d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt;
-      d.vy -= 3.2 * dt;
-      const s = 1 - d.life / d.ttl;
-      tmpM.makeScale(s, s, s).setPosition(d.x, d.y, d.z);
-      p.mesh.setMatrixAt(i, tmpM);
-    }
-    if (any) p.mesh.instanceMatrix.needsUpdate = true;
-  }
   if (!look || !look.ambient || reducedMotion) return;
   ambientTime += dt;
   const t = ambientTime;
@@ -657,17 +631,5 @@ export function update(dtIn: number): void {
   key.intensity = (1.6 + Math.sin(t * 0.31) * 0.04 + Math.sin(t * 0.83) * 0.02);
   const m = b.motes;
   if (!m) return;
-  const pos = m.pts.geometry.getAttribute("position") as BufferAttribute;
-  const [sw, sh, top] = m.span;
-  m.seeds.forEach((s, i) => {
-    s.y += s.v * dt * 0.35;
-    s.x += Math.sin(t * 0.4 + s.p) * 0.12 * dt;
-    s.z += Math.cos(t * 0.3 + s.p) * 0.1 * dt;
-    if (s.y > top + 4) s.y = top + 0.3;
-    if (s.x > sw / 2) s.x -= sw; else if (s.x < -sw / 2) s.x += sw;
-    if (s.z > sh / 2) s.z -= sh; else if (s.z < -sh / 2) s.z += sh;
-    pos.setXYZ(i, s.x, s.y, s.z);
-  });
-  pos.needsUpdate = true;
   m.mat.opacity = 0.26 + Math.sin(t * 0.5) * 0.06;
 }

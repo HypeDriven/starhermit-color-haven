@@ -8,7 +8,7 @@
 //   { progress }) shows as foreign and is merged in and replaced once;
 // - the round in progress (Continue on the title) and the local
 //   leaderboards stay on the device (`storage`, through the small
-//   localStorage-like `ls` js/store.js takes), as the browser build kept
+//   engine's localStorage, the `ls` js/store.js takes), as the browser build kept
 //   them in localStorage;
 // - the game's own settings (Captions for sounds, the colour-vision-safe
 //   palette, the left-handed tray, haptics) are `settings` (game.<key>,
@@ -21,26 +21,15 @@
 //   SDK's submitScores did) and the platform's clock for the daily's date.
 import type { JsonValue } from "starhermit:engine";
 import {
-  connectGame, inviteLink as fetchInviteLink, leaderboards, onPlayerChange, player, serverNow, serverTime, sessions,
+  inviteLink as fetchInviteLink, leaderboards, onPlayerChange, player, serverNow, serverTime,
 } from "starhermit:platform";
-import { saves, settings as store, storage } from "starhermit:storage";
+import { saves, settings as store, localStorage as ls } from "starhermit:storage";
 import * as S from "../js/store.js";
 
 export type Progress = ReturnType<typeof S.defaultProgress> & { playerId?: string };
 export interface Doc { v: number; progress: Progress }
 
-/** localStorage's shape over the device's storage (js/store.js's snapshot and boards). */
-export const ls = {
-  getItem(key: string): string | null {
-    try { return storage.getText(key); } catch { return null; }
-  },
-  setItem(key: string, value: string): void {
-    try { storage.set(key, String(value)); } catch (e) { console.warn(`storage ${key}: ${String(e)}`); }
-  },
-  removeItem(key: string): void {
-    try { storage.remove(key); } catch { /* gone */ }
-  },
-};
+export { ls };
 
 // --- the save ------------------------------------------------------------------------------
 let doc: Doc = { v: 1, progress: S.defaultProgress() };
@@ -177,57 +166,9 @@ onPlayerChange(() => refreshPlayer());
 export function nowMs(): number { return serverNow() ?? Date.now(); }
 
 // --- the StarHermit leaderboard ------------------------------------------------------------
-const BOARD_KEY = "colorhaven.board-id";
-let boardId: string | null = null;
-/** The high-score board's id: listed signed in, then kept on the device. */
-async function highScoreBoard(): Promise<string | null> {
-  if (boardId) return boardId;
-  if (player()) {
-    try {
-      const list = await leaderboards.list();
-      const b = list.find((x) => x.key === "high-score") ?? list[0];
-      if (b) { boardId = b.id; try { storage.set(BOARD_KEY, b.id); } catch { /* full */ } }
-    } catch { /* offline */ }
-  }
-  if (!boardId) { try { boardId = storage.getText(BOARD_KEY); } catch { boardId = null; } }
-  return boardId;
-}
 
 /** Signed in only: post a completed ranked round's total through score-script.js; { posted, rank }. Never rejects. */
 export async function postLeaderboard(total: number): Promise<{ posted: boolean; rank: number | null }> {
-  const me = player();
-  if (!me) return { posted: false, rank: null };
-  const score = Math.max(0, Math.round(total));
-  let accepted: string[] = [];
-  try {
-    const sessionId = await sessions.practice();
-    accepted = await new Promise<string[]>((resolve) => {
-      const socket = connectGame(sessionId);
-      let done = false;
-      const finish = (list: string[]): void => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        socket.close();
-        resolve(list);
-      };
-      const timer = setTimeout(() => finish([]), 15000);
-      socket.on("open", () => { socket.sendCommand({ type: "result", scores: { "high-score": score } }); });
-      socket.on("game", (data) => {
-        const d = data as { type?: string; accepted?: string[] } | null;
-        if (d && d.type === "result-ack") finish(Array.isArray(d.accepted) ? d.accepted : []);
-      });
-      socket.on("error", () => finish([]));
-      socket.on("stopped", () => finish([]));
-      socket.on("abandoned", () => finish([]));
-    });
-  } catch { return { posted: false, rank: null }; }
-  if (!accepted.includes("high-score")) return { posted: false, rank: null };
-  try {
-    const id = await highScoreBoard();
-    if (!id) return { posted: true, rank: null };
-    const r = await leaderboards.entries(id, { pageSize: 100 });
-    const mine = r.items.find((e) => e.userId === me.userId);
-    return { posted: true, rank: mine ? mine.rank : null };
-  } catch { return { posted: true, rank: null }; }
+  const r = await leaderboards.submitScore("high-score", Math.max(0, Math.round(total)));
+  return { posted: r.accepted, rank: r.rank };
 }
