@@ -1,3 +1,6 @@
+import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
+// localization-runtime:attached
+import { localizedFont as __l10nFont, localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The palette's region symbols (js/content.js SYMBOLS: ● ▲ ■ ◆ ★ ✚ ◐ ⬡),
 // which reinforce each colour's number so it never relies on colour
 // alone. As in the browser build they are font characters, drawn in the
@@ -27,7 +30,7 @@ function ink(i: number): Ink {
   let m = inks.get(i);
   if (m) return m;
   probe ??= new OffscreenCanvas(4, 4).getContext("2d")!;
-  probe.font = `${REF}px ${FONT}`;
+  probe.font = __l10nCanvasFont(`${REF}px ${FONT}`);
   probe.textAlign = "center";
   probe.textBaseline = "alphabetic";
   const t = probe.measureText(SYMBOLS[i]!);
@@ -43,7 +46,7 @@ export function symbolCanvas(ctx: OffscreenCanvasRenderingContext2D, i: number, 
   const k = i % SYMBOLS.length, m = ink(k), size = m.scale * r;
   ctx.save();
   ctx.fillStyle = color;
-  ctx.font = `${size}px ${FONT}`;
+  ctx.font = __l10nCanvasFont(`${size}px ${FONT}`);
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   ctx.fillText(SYMBOLS[k]!, cx - m.dx * size, cy - m.dy * size);
@@ -54,5 +57,5 @@ export function symbolCanvas(ctx: OffscreenCanvasRenderingContext2D, i: number, 
 export function symbolDraw(i: number, cx: number, cy: number, r: number, color: string): void {
   const k = i % SYMBOLS.length, m = ink(k), size = m.scale * r;
   // draw.text's y is the line box's top: the baseline sits the font's ascent below it.
-  draw.text(SYMBOLS[k]!, cx - m.dx * size, cy - (m.dy + m.asc) * size, { size, font: DRAW_FONT, color, align: "center" });
+  draw.text(SYMBOLS[k]!, cx - m.dx * size, cy - (m.dy + m.asc) * size, __l10nDrawOptions({ size, font: __l10nFont(DRAW_FONT), color, align: "center" }));
 }

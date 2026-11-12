@@ -200,3 +200,11 @@ Every control is a UI widget with a name (palette buttons: "Color N, name, K reg
 - `replay(level, opts, commands, 0)` records no periodic hashes; no shipped caller passes 0.
 - The number overlay is part of the ambient-occlusion pass (the engine has no per-object AO exclusion); Ultra's paper sheen is not drawn.
 - The browser build's dev URL hooks (`?autostart=…`, `?screen=…`) and per-category graphics overrides are gone (the runtime's Options choose a graphics level; play scripts drive the screens).
+
+<!-- regional-localization:start -->
+
+### Regional interface languages
+
+The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `ta-SG`, `zh-HK`, `yue-HK`, `nl-NL`, `fi-FI`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `da-DE`, `lb-BE`, `eu-FR`, `ca-FR`, `oc-FR`, `ca-IT`, `oc-IT`, `ru-FI`, `ca-ES`, `eu-ES`, `gl-ES`, `ru-EE`, `su-ID`, `co-FR`, `sl-IT`, `fur-IT`, `bew-ID`, `km-VN`.
+
+<!-- regional-localization:end -->

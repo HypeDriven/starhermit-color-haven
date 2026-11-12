@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Color Haven on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers
 // by the engine's web runtime. The rules (js/rules.js), content
@@ -628,9 +629,13 @@ onUpdate((dt) => {
     openOverlay("results", "btn-results-next");
   }
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   drawScreens();
   render.update(frameDt);
-});
+}));
 
 export { TIERS, tierSpec };
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

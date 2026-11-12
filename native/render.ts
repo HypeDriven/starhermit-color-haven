@@ -1,3 +1,5 @@
+// localization-runtime:attached
+import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The layered paper-art board on starhermit:scene, as the browser build's
 // js/render.js drew it: the linen table, the four wooden frame slats, the
 // paper tiles (one InstancedMesh, each region lifted by its palette index so
@@ -534,7 +536,7 @@ function drawNumbers(state: BoardState): void {
       // The browser build re-weighted dark ink for its linear-light post chain so the numbers kept their
       // weight; here the ink is drawn fully opaque and a step bolder for the same effect.
       ctx.fillStyle = "rgb(70,58,48)";
-      ctx.font = `700 ${cellPx * 0.42}px sans-serif`;
+      ctx.font = __l10nCanvasFont(`700 ${cellPx * 0.42}px sans-serif`);
       ctx.fillText(String(t + 1), cx, cy - cellPx * 0.1);
       symbolCanvas(ctx, palette[t]!.i, cx, cy + cellPx * 0.26, cellPx * 0.085, "rgba(70,58,48,0.7)");
     } else {
