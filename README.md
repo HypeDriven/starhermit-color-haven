@@ -1,5 +1,7 @@
 # Color Haven
 
+**[▶ Play Color Haven on StarHermit](https://dashboard.starhermit.com/play/92384e9a-a3ba-4bf7-8829-14fef157b7ad)**
+
 A relaxing paint-by-numbers paper-art game. Fill numbered regions with their
 assigned palette colors and complete illustrations — no timer, no way to lose.
 
