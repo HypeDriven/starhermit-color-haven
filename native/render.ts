@@ -1,5 +1,6 @@
 // localization-runtime:attached
-import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
+import {
+  localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The layered paper-art board on starhermit:scene, as the browser build's
 // js/render.js drew it: the linen table, the four wooden frame slats, the
 // paper tiles (one InstancedMesh, each region lifted by its palette index so
@@ -21,13 +22,9 @@ import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // overlay's dark-ink re-weighting for linear blending is not needed (the
 // engine blends the overlay as the canvas drew it).
 import {
-  ACESFilmicToneMapping, BoxGeometry, CanvasTexture, Color, DirectionalLight, DoubleSide,
-  DynamicDrawUsage, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial,
-  MeshStandardMaterial, OrthographicCamera, PMREMGenerator, Plane, PlaneGeometry, PointsMaterial, Raycaster,
-  RepeatWrapping, RingGeometry, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, Vector3, pointerToNdc, renderer, scene,
-  type Material, type Texture,
-  ParticleEmitter,
+  ACESFilmicToneMapping, BoxGeometry, CanvasTexture, Color, DirectionalLight, DoubleSide, DynamicDrawUsage, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, OrthographicCamera, PMREMGenerator, Plane, PlaneGeometry, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, Vector3, pointerToNdc, renderer, scene, type Material, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { createRandom } from "starhermit:engine";
 import { OffscreenCanvas } from "starhermit:canvas";
 import type { Look } from "./quality.ts";
@@ -73,8 +70,8 @@ interface Board {
   group: Group; level: Level; palette: PaletteEntry[]; theme: Theme; tiles: InstancedMesh;
   canvas: OffscreenCanvas; tex: CanvasTexture; drawn: number[]; ring: Mesh; ringMat: MeshBasicMaterial; ghost: Mesh; ghostMat: MeshBasicMaterial;
   /** Pigment puffs: an emitter per palette colour (an emitter has one colour at a time). */
-  puffs: ParticleEmitter[];
-  motes: { emitter: ParticleEmitter; mat: PointsMaterial } | null;
+  puffs: GPUParticleEmitter[];
+  motes: { emitter: GPUParticleEmitter; mat: PointsMaterial } | null;
 }
 let board: Board | null = null;
 let lastState: BoardState | null = null;
@@ -297,15 +294,14 @@ export function buildBoard(level: Level, palette: PaletteEntry[], theme: Theme):
   ghost.renderOrder = 3;
   g.add(ghost);
 
-  // Pigment puffs: planes shrinking to nothing as they fall.
+  // Pigment puffs: point sprites shrinking to nothing as they fall.
   const pCount = look.budget.particles;
-  const puffs: ParticleEmitter[] = [];
+  const puffs: GPUParticleEmitter[] = [];
   if (pCount > 0) {
-    const geometry = new PlaneGeometry(0.12, 0.12);
-    const material = new MeshBasicMaterial({ transparent: true, opacity: 0.85, depthWrite: false });
+    const material = new PointsMaterial({ size: 0.12, transparent: true, opacity: 0.85, depthWrite: false });
     palette.forEach((entry, i) => {
-      const e = new ParticleEmitter({
-        capacity: pCount, geometry, material, seed: i + 1, space: "local", color: entry.hex, life: [0.5, 1],
+      const e = new GPUParticleEmitter({
+        capacity: pCount, material, seed: i + 1, space: "local", color: entry.hex, life: [0.5, 1],
         velocity: [0, 2, 0], velocitySpread: [1.4, 0.8, 1.4], gravity: [0, -3.2, 0], size: [1, 0],
       });
       e.frustumCulled = false;
@@ -321,7 +317,7 @@ export function buildBoard(level: Level, palette: PaletteEntry[], theme: Theme):
     const top = (palette.length - 1) * TILE.LAYER_STEP;
     const mmat = new PointsMaterial({ color: 0xfff4dc, size: 2.5, sizeAttenuation: false, transparent: true, opacity: 0.3, depthWrite: false });
     // Dust drifting in the sunlight, over the board.
-    const emitter = new ParticleEmitter({
+    const emitter = new GPUParticleEmitter({
       capacity: count, material: mmat, seed: w * 131 + h, space: "local", shape: "box", extent: [(w + 2) / 2, 1.85, (h + 2) / 2],
       velocity: [0, 0.038, 0], velocitySpread: [0.06, 0.018, 0.05], life: [10, 120], rate: count / 65,
     });

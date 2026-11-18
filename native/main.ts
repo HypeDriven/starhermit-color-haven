@@ -104,7 +104,7 @@ export function announce(text: string, assertive = false): void {
   if (text) ui.announce(text.slice(0, 500), { politeness: assertive ? "assertive" : "polite" });
 }
 /** The round's toast (2.6 s), over the board; `text` re-reads in the current language. */
-export function toast(text: () => string, seconds = 2.6): void { app.toast = { text, until: now() + seconds }; }
+export function toast(text: () => string, seconds = 2.6): void { ui.toast!(text(), { duration: seconds, position: "bottom", offset: 54, style: "hud-toast" }); }
 /** A short confirmation on any screen (3.5 s). */
 export function pageToast(text: () => string): void { ui.toast!(text(), { duration: 3.5, style: "page-toast", dismissible: false }); }
 export function banner(text: (() => string) | null, seconds: number | null = null, action: (() => void) | null = null): void {
@@ -248,7 +248,7 @@ function teardownRound(): void {
   session = null;
   tutorial = null;
   app.banner = null;
-  app.toast = null;
+  ui.clearToasts!();
   audio.stopRound();
 }
 export function restartRound(): void {

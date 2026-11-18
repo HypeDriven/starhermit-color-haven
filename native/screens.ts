@@ -1,3 +1,4 @@
+import { bindings } from "starhermit:input";
 import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
 import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
 // localization-runtime:attached
@@ -205,7 +206,7 @@ function drawPetals(L: Layout): void {
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   loadArt();
   const L = layoutNow();
   const f = frame();
@@ -580,14 +581,6 @@ function gameScreen(L: Layout): void {
   draw.rect(0, Y, X, Hd, bg);
   draw.rect(X + Wd, Y, f.width - X - Wd, Hd, bg);
   roundCorners(X, Y, Wd, Hd, 14 * sc, bg);
-  if (app.toast) {
-    const text = app.toast.text();
-    const tw = Math.min(pw * 0.9, 480);
-    ui.place("hud-toast", { anchor: "top-start", x: fx + (pw - Math.min(tw, textWidth(text, "hud-toast") + 30)) / 2, y: fy + ph - 54 }, () => {
-      if (textWidth(text, "hud-toast") + 30 <= tw) ui.style(__l10nStyle("hud-toast")).id("hud-toast").label(text);
-      else ui.style(__l10nStyle("hud-toast")).id("hud-toast").paragraph(text, tw - 28);
-    });
-  }
 }
 /** Masks the playfield's square corners into rounded ones (the browser build's border-radius). */
 function roundCorners(x: number, y: number, w: number, h: number, r: number, color: string): void {
@@ -906,4 +899,11 @@ function captions(): void {
     const text = "♪ " + tr(app.caption.text);
     ui.place("captions", { anchor: "top", y: 60 }, () => ui.style(__l10nStyle("captions")).id("caption-text").label(text.replace("♪ ", "")), { style: "captions" });
   }
+}
+
+export function drawScreens(): void {
+  if (!(topOverlay() === "help")) { drawScreensImmediate(); return; }
+  const actions = ["left","right","up","down","fill","undo","hint","recenter","pause","cancel","color_prev","color_next","color1","color2","color3","color4","color5","color6","color7","color8"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }
