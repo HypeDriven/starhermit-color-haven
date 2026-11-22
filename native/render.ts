@@ -586,6 +586,7 @@ export function applyLook(next: Look): void {
     vignette: { amount: 0.2, inner: 0.4, outer: 0.9 },
   } : null;
   renderer.antialias = next.antialias;
+  renderer.motionBlur = next.preset === "high" || next.preset === "ultra" ? { intensity: 0.25, samples: 8, maxPixels: 16, targetFps: 60, camera: false } : null;
   // Asset variants (materials, grain, bevels, overlay size, pools) live in the board: build it again.
   const b = board ?? (pending ? { level: pending.level, palette: pending.palette, theme: pending.theme } : null);
   if (b) {
