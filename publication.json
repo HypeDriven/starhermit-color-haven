@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T07:00:59.406486+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-26T16:40:23.638806+00:00",
+    "coverArtUpdatedAt": "2026-11-26T20:12:26.990835+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-26T16:40:23.627538+00:00",
+      "deployedAt": "2026-11-26T20:12:26.977026+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.50.0",
+      "engineVersion": "1.51.0",
       "deployWarning": null
     },
     "description": "Fill numbered regions with matching colors to complete layered paper illustrations at your own pace.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-26T16:40:22.978Z",
-  "sourceCommit": "c15803ca808c73cfd620e3c5d598f7f258df0273",
-  "bytesReceived": 2669889,
-  "archiveSha256": "ed6f3391c5294546e10b26c47e3311f9898acd2d15ed8d9ec09e645c46989e19",
+  "publishedAt": "2026-11-26T20:12:27.111Z",
+  "sourceCommit": "8b690f53a5b2efd104fdc04f13f0bad964f4944b",
+  "bytesReceived": 2669843,
+  "archiveSha256": "85cf320f2d0e1f325904547730dcc3e238ee1d4d8c45e4171f4d6effa6099330",
   "indexSha256": "357064a0c3ae2ed9c7139dabe2182c9c2d5185d5631f9464138004e1cd9a60a5",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 2669889,
+    "bytesReceived": 2669843,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.50.0",
+    "engineVersion": "1.51.0",
     "deployWarning": null
   },
   "liveVerification": {
