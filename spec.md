@@ -3,13 +3,13 @@
 **Status:** shipped; this document describes the game as it runs today.
 **Pitch:** a paint-by-numbers paper-art game — pick a numbered colour, fill every region that carries that number, and finish a layered paper illustration. No timer, no way to lose.
 **Genre:** relaxation / colouring puzzle. **Players:** 1 (asynchronous leaderboards). **Session:** 2–15 min per piece (tier-dependent).
-**Platforms:** a StarHermit engine script game (engine 1.47.0, host API 1.47, `engine.minor=47`): played natively by the StarHermit client and in browsers by the engine's web runtime from one package. **Rendering:** an orthographic paper board on `starhermit:scene` under an immediate-mode `starhermit:ui` shell.
+**Platforms:** a StarHermit engine script game (engine 1.50.0, host API 1.50, `engine.minor=50`): played natively by the StarHermit client and in browsers by the engine's web runtime from one package. **Rendering:** an orthographic paper board on `starhermit:scene` under an immediate-mode `starhermit:ui` shell.
 
 ## 1. File map
 
 | Path | Role |
 |---|---|
-| `starhermit.txt` | manifest: `engine.entry=native/main.ts`, `engine.version=1.47.0`, `engine.minor=47`, capabilities `platform,storage,clipboard`, `control.*` / `engine.gamepad.*` / `engine.group.*`, `server=score-script.js`, cover |
+| `starhermit.txt` | manifest: `engine.entry=native/main.ts`, `engine.version=1.50.0`, `engine.minor=50`, capabilities `platform,storage,clipboard`, `control.*` / `engine.gamepad.*` / `engine.group.*`, `server=score-script.js`, cover |
 | `native/main.ts` | entry: state machine, round lifecycle and snapshot, session events → sound/toast/announcement/board, Learn coach banner, input (actions, board taps, hover), results and leaderboard posting, lifecycle |
 | `native/screens.ts` | every screen, card, dialog and toast (`starhermit:ui`), layouts per window size, title petals, drawn glyphs |
 | `native/render.ts` | the paper board (`starhermit:scene`): table, frame, instanced tiles, number overlay canvas, focus ring, hover ghost, pigment puffs, motes, lights, post effects, picking |
@@ -211,9 +211,9 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.47.0
+## Engine 1.50.0
 
-Browser play uses the WebGPU-only StarHermit 1.47.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the WebGPU-only StarHermit 1.50.0 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
