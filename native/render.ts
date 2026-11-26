@@ -224,6 +224,7 @@ export function buildBoard(level: Level, palette: PaletteEntry[], theme: Theme):
   table.rotation.x = -PI / 2;
   table.position.y = -0.28;
   table.receiveShadow = true;
+  table.movable = false;
   g.add(table);
 
   // Frame: four paper slats around the board.
@@ -238,6 +239,7 @@ export function buildBoard(level: Level, palette: PaletteEntry[], theme: Theme):
     m.position.set(x, -ft / 2 + 0.02, z);
     m.castShadow = true;
     m.receiveShadow = true;
+    m.movable = false;
     g.add(m);
   };
   slat(fw, 0.3, 0, -fh / 2 + 0.15); slat(fw, 0.3, 0, fh / 2 - 0.15);
@@ -272,6 +274,7 @@ export function buildBoard(level: Level, palette: PaletteEntry[], theme: Theme):
   overlay.rotation.x = -PI / 2;
   overlay.position.y = (palette.length - 1) * TILE.LAYER_STEP + TILE.HEIGHT / 2 + TILE.FILL_LIFT + 0.02;
   overlay.renderOrder = 2;
+  overlay.movable = false; // its canvas changes, not its place
   g.add(overlay);
 
   // Selection ring with thin ink edges, and the hover ghost.
