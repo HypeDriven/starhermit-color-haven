@@ -3,13 +3,13 @@
 **Status:** shipped; this document describes the game as it runs today.
 **Pitch:** a paint-by-numbers paper-art game — pick a numbered colour, fill every region that carries that number, and finish a layered paper illustration. No timer, no way to lose.
 **Genre:** relaxation / colouring puzzle. **Players:** 1 (asynchronous leaderboards). **Session:** 2–15 min per piece (tier-dependent).
-**Platforms:** a StarHermit engine script game (engine 1.51.0, host API 1.51, `engine.minor=51`): played natively by the StarHermit client and in browsers by the engine's web runtime from one package. **Rendering:** an orthographic paper board on `starhermit:scene` under an immediate-mode `starhermit:ui` shell.
+**Platforms:** a StarHermit engine script game (engine 1.53.0, host API 1.53, `engine.minor=53`): played natively by the StarHermit client and in browsers by the engine's web runtime from one package. **Rendering:** an orthographic paper board on `starhermit:scene` under an immediate-mode `starhermit:ui` shell.
 
 ## 1. File map
 
 | Path | Role |
 |---|---|
-| `starhermit.txt` | manifest: `engine.entry=native/main.ts`, `engine.version=1.51.0`, `engine.minor=51`, capabilities `platform,storage,clipboard`, `control.*` / `engine.gamepad.*` / `engine.group.*`, `server=score-script.js`, cover |
+| `starhermit.txt` | manifest: `engine.entry=native/main.ts`, `engine.version=1.53.0`, `engine.minor=53`, capabilities `platform,storage,clipboard`, `control.*` / `engine.gamepad.*` / `engine.group.*`, `server=score-script.js`, cover |
 | `native/main.ts` | entry: state machine, round lifecycle and snapshot, session events → sound/toast/announcement/board, Learn coach banner, input (actions, board taps, hover), results and leaderboard posting, lifecycle |
 | `native/screens.ts` | every screen, card, dialog and toast (`starhermit:ui`), layouts per window size, title petals, drawn glyphs |
 | `native/render.ts` | the paper board (`starhermit:scene`): table, frame, instanced tiles, number overlay canvas, focus ring, hover ghost, pigment puffs, motes, lights, post effects, picking |
@@ -211,9 +211,9 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.51.0
+## Engine 1.53.0
 
-Browser play uses the StarHermit 1.51.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the StarHermit 1.53.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
@@ -221,8 +221,10 @@ Toasts use native engine stacking, styling, accessibility and lifetime managemen
 
 Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
 
-**Frame rate (host API 1.51 `setTargetFps`).** The game caps itself at 30 frames a second on the title (its backdrop covers the table, which does not draw there; the drifting petals run at 30 too) and, under a finger (`primaryPointer() === "coarse"`), on the phone graphics levels (`levelIndex` ≤ 3), where even 33 ms frames replace uneven ones; elsewhere there is no game cap. The round clock stays 60 fixed steps a second whatever the frame rate. The engine sets the cap aside while its menus are open, and the player's Frame rate limit still applies.
+**Frame rate (host API 1.53 `setTargetFps`).** The game caps itself at 30 frames a second on the title (its backdrop covers the table, which does not draw there; the drifting petals run at 30 too) and, under a finger (`primaryPointer() === "coarse"`), on the phone graphics levels (`levelIndex` ≤ 3), where even 33 ms frames replace uneven ones; elsewhere there is no game cap. The round clock stays 60 fixed steps a second whatever the frame rate. The engine sets the cap aside while its menus are open, and the player's Frame rate limit still applies.
 
-**Still scenery (host API 1.51).** The linen table, the four frame slats and the number overlay are `movable = false`, so the renderer caches them in shadow maps from the first frame and the scene's sync skips their transforms. The tile InstancedMesh (its fills drop and wobble), the focus ring, the hover ghost, the puffs and motes stay movable.
+**Still scenery (host API 1.53).** The linen table, the four frame slats and the number overlay are `movable = false`, so the renderer caches them in shadow maps from the first frame and the scene's sync skips their transforms. The tile InstancedMesh (its fills drop and wobble), the focus ring, the hover ghost, the puffs and motes stay movable.
 
 Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
+
+On engine 1.53.0, browser play through WebGL 2 compiles a frame's shader programs together and holds that frame until they are linked, blends skinned meshes in one pass, reuses the window pass's depth, and uses a hardware WebGL 2 context when WebGPU's adapter is software.
